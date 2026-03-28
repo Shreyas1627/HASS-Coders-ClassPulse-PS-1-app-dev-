@@ -25,10 +25,27 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
+  // Pie chart animation controller
+  late AnimationController _pieAnimController;
+  double _animGotIt = 0;
+  double _animSortOf = 0;
+  double _animLost = 0;
+  double _animNoVote = 0;
+
+  // Question queue state
+  late List<StudentQuestion> _questions;
+
   @override
   void initState() {
     super.initState();
     _liveSignals = liveSessionStudents.map((s) => s.signal).toList();
+    _questions = List.from(mockQuestionQueue);
+
+    // Initialize animated pie values
+    _animGotIt = _gotItPct;
+    _animSortOf = _sortOfPct;
+    _animLost = _lostPct;
+    _animNoVote = _total > 0 ? _noVoteCount / _total : 0;
 
     _signalTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _simulateSignalChange();
@@ -41,12 +58,18 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     _pulseAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _pieAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
   }
 
   @override
   void dispose() {
     _signalTimer?.cancel();
     _pulseController.dispose();
+    _pieAnimController.dispose();
     super.dispose();
   }
 
@@ -54,6 +77,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     if (!mounted) return;
     final rng = math.Random();
     final changeCount = rng.nextInt(3) + 1;
+
+    // Capture previous values
+    final prevGotIt = _gotItPct;
+    final prevSortOf = _sortOfPct;
+    final prevLost = _lostPct;
+    final prevNoVote = _total > 0 ? _noVoteCount / _total : 0.0;
+
     setState(() {
       _reminderDismissed = false;
       for (int i = 0; i < changeCount; i++) {
@@ -62,6 +92,28 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             .values[rng.nextInt(ComprehensionSignal.values.length)];
       }
     });
+
+    // Animate from previous to new values
+    final newGotIt = _gotItPct;
+    final newSortOf = _sortOfPct;
+    final newLost = _lostPct;
+    final newNoVote = _total > 0 ? _noVoteCount / _total : 0.0;
+
+    _pieAnimController.reset();
+    final animation = CurvedAnimation(
+      parent: _pieAnimController,
+      curve: Curves.easeInOutCubic,
+    );
+    animation.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        _animGotIt = prevGotIt + (newGotIt - prevGotIt) * animation.value;
+        _animSortOf = prevSortOf + (newSortOf - prevSortOf) * animation.value;
+        _animLost = prevLost + (newLost - prevLost) * animation.value;
+        _animNoVote = prevNoVote + (newNoVote - prevNoVote) * animation.value;
+      });
+    });
+    _pieAnimController.forward();
   }
 
   // ── Computed stats ─────────────────────────────────────────────────────
@@ -80,7 +132,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   double get _lostPct => _total > 0 ? _lostCount / _total : 0;
 
   /// Weighted understanding score 0–100.
-  /// Got it = 100, Sort of = 50, Lost = 0. No‑votes excluded.
   double get _understandingScore {
     final voted = _gotItCount + _sortOfCount + _lostCount;
     if (voted == 0) return 50;
@@ -97,9 +148,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: AppColors.surface,
-        title: const Text('End Session?',
-            style: TextStyle(
-                fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        title: const Text(
+          'End Session?',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
         content: const Text(
           'This will end the current live session.\nStudents will be disconnected.',
           style: TextStyle(color: AppColors.textSecondary, height: 1.5),
@@ -107,8 +162,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -118,11 +175,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             style: TextButton.styleFrom(
               backgroundColor: AppColors.warning.withValues(alpha: 0.1),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: const Text('End Session',
-                style: TextStyle(
-                    color: AppColors.warning, fontWeight: FontWeight.w600)),
+            child: const Text(
+              'End Session',
+              style: TextStyle(
+                color: AppColors.warning,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
@@ -176,16 +238,18 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 ),
               ),
               const SizedBox(height: 20),
-              // Large code display
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 20,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      width: 2),
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                    width: 2,
+                  ),
                 ),
                 child: Text(
                   widget.session.joinCode,
@@ -199,7 +263,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              // QR placeholder
               Container(
                 width: 150,
                 height: 150,
@@ -211,8 +274,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.qr_code_2_rounded,
-                        size: 90, color: AppColors.textPrimary),
+                    Icon(
+                      Icons.qr_code_2_rounded,
+                      size: 90,
+                      color: AppColors.textPrimary,
+                    ),
                     SizedBox(height: 4),
                     Text(
                       'Scan to Join',
@@ -233,6 +299,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
+  void _markQuestionAddressed(int index) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      final q = _questions[index];
+      _questions[index] = StudentQuestion(
+        text: q.text,
+        timeAgo: q.timeAgo,
+        upvotes: q.upvotes,
+        isAddressed: !q.isAddressed,
+      );
+    });
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -243,19 +322,35 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           children: [
             _buildHeader(),
             _buildSessionInfoBar(),
+            // Category grid — fixed height
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: _buildCategoryGrid(),
+            ),
+            // Low understanding reminder
+            if (_isLowUnderstanding && !_reminderDismissed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: _buildGentleReminder(),
+              ),
+            const SizedBox(height: 10),
+            // Main content: Pie chart (left) + Question Queue (right)
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-                child: Column(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildCategoryGrid(),
-                    const SizedBox(height: 16),
-                    _buildGaugeCard(),
-                    if (_isLowUnderstanding && !_reminderDismissed) ...[
-                      const SizedBox(height: 12),
-                      _buildGentleReminder(),
-                    ],
+                    // ── Left: Pie Chart (35% width) ──
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.35,
+                      child: _buildPieChartSection(),
+                    ),
+                    const SizedBox(width: 12),
+                    // ── Right: Question Queue (remaining width) ──
+                    Expanded(
+                      child: _buildQuestionQueueSection(),
+                    ),
                   ],
                 ),
               ),
@@ -266,24 +361,23 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  // ── Header (clean, same style as dashboard) ────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border:
-            Border(bottom: BorderSide(color: AppColors.divider, width: 1)),
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 1)),
         boxShadow: [
           BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 6,
-              offset: Offset(0, 2)),
+            color: AppColors.cardShadow,
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
         ],
       ),
       child: Row(
         children: [
-          // Back
           GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
@@ -295,13 +389,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.arrow_back_rounded,
-                  size: 20, color: AppColors.textPrimary),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                size: 20,
+                color: AppColors.textPrimary,
+              ),
             ),
           ),
           const SizedBox(width: 12),
-
-          // Title
           const Text(
             'Live Session',
             style: TextStyle(
@@ -312,8 +407,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             ),
           ),
           const SizedBox(width: 8),
-
-          // Live badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -343,15 +436,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
               ],
             ),
           ),
-
           const Spacer(),
-
-          // End session
           GestureDetector(
             onTap: _endSession,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.warning,
                 borderRadius: BorderRadius.circular(10),
@@ -377,8 +466,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border:
-            Border(bottom: BorderSide(color: AppColors.divider, width: 1)),
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 1)),
       ),
       child: Row(
         children: [
@@ -409,18 +497,17 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             ),
           ),
           const SizedBox(width: 10),
-          // Tappable join code chip
           GestureDetector(
             onTap: _showCodeSheet,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    width: 1),
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                  width: 1,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -436,8 +523,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Icon(Icons.qr_code_rounded,
-                      size: 16, color: AppColors.primary),
+                  const Icon(
+                    Icons.qr_code_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
                 ],
               ),
             ),
@@ -524,62 +614,70 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOut,
-        height: 110,
-        padding: const EdgeInsets.all(14),
+        height: 100,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withValues(alpha: 0.25), width: 1.5),
           boxShadow: [
             BoxShadow(
-                color: color.withValues(alpha: 0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 2)),
+              color: color.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
             const BoxShadow(
-                color: AppColors.cardShadow,
-                blurRadius: 4,
-                offset: Offset(0, 1)),
+              color: AppColors.cardShadow,
+              blurRadius: 4,
+              offset: Offset(0, 1),
+            ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(5),
+                  padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(icon, size: 15, color: color),
+                  child: Icon(icon, size: 14, color: color),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title,
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: color)),
-                      Text(subtitle,
-                          style: const TextStyle(
-                              fontSize: 9,
-                              color: AppColors.textMuted,
-                              fontWeight: FontWeight.w500)),
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 8,
+                          color: AppColors.textMuted,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                // Tap hint
-                Icon(Icons.chevron_right_rounded,
-                    size: 16, color: color.withValues(alpha: 0.4)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 14,
+                  color: color.withValues(alpha: 0.4),
+                ),
               ],
             ),
             const Spacer(),
-            // Count + percentage
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -587,7 +685,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 Text(
                   '$count',
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: color,
                     height: 1,
@@ -597,7 +695,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 Text(
                   '${(pct * 100).round()}%',
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: color.withValues(alpha: 0.6),
                   ),
@@ -606,7 +704,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 Text(
                   'student${count == 1 ? '' : 's'}',
                   style: const TextStyle(
-                    fontSize: 10,
+                    fontSize: 9,
                     color: AppColors.textMuted,
                     fontWeight: FontWeight.w500,
                   ),
@@ -619,9 +717,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  // ── Bottom sheet showing anonymous students for a category ─────────────
+  // ── Students bottom sheet ──────────────────────────────────────────────
   void _showStudentsSheet(
-      String title, Color color, IconData icon, ComprehensionSignal signal) {
+    String title,
+    Color color,
+    IconData icon,
+    ComprehensionSignal signal,
+  ) {
     HapticFeedback.lightImpact();
     final matchingIndices = <int>[];
     for (int i = 0; i < _liveSignals.length; i++) {
@@ -648,7 +750,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 40,
@@ -660,7 +761,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              // Title
               Row(
                 children: [
                   Container(
@@ -683,7 +783,6 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 ],
               ),
               const SizedBox(height: 14),
-              // Student list
               if (matchingIndices.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 32),
@@ -702,8 +801,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     shrinkWrap: true,
                     padding: const EdgeInsets.only(bottom: 20),
                     itemCount: matchingIndices.length,
-                    separatorBuilder: (_, __) => const Divider(
-                        height: 1, color: AppColors.divider),
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, color: AppColors.divider),
                     itemBuilder: (context, index) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -716,9 +815,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                                 color: color.withValues(alpha: 0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.person_rounded,
-                                  size: 20,
-                                  color: color.withValues(alpha: 0.5)),
+                              child: Icon(
+                                Icons.person_rounded,
+                                size: 20,
+                                color: color.withValues(alpha: 0.5),
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Text(
@@ -732,7 +833,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                             const Spacer(),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
@@ -759,8 +862,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  // ── Pie chart card ─────────────────────────────────────────────────────
-  Widget _buildGaugeCard() {
+  // ── Pie Chart Section (left side) ──────────────────────────────────────
+  Widget _buildPieChartSection() {
     final score = _understandingScore;
     Color scoreColor;
     String scoreLabel;
@@ -776,30 +879,31 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 8,
-              offset: Offset(0, 2)),
+            color: AppColors.cardShadow,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
         children: [
           const Text(
-            'Class Understanding',
+            'Understanding',
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 4),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: scoreColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
@@ -807,102 +911,358 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             child: Text(
               scoreLabel,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: scoreColor,
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          // Pie chart with center label
-          SizedBox(
-            height: 160,
-            width: 160,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CustomPaint(
-                  size: const Size(160, 160),
-                  painter: _PieChartPainter(
-                    gotItPct: _gotItPct,
-                    sortOfPct: _sortOfPct,
-                    lostPct: _lostPct,
-                    noVotePct: _total > 0 ? _noVoteCount / _total : 0,
-                  ),
-                ),
-                // Center text
-                Column(
-                  mainAxisSize: MainAxisSize.min,
+          const SizedBox(height: 10),
+          // Pie chart — compact
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final chartSize = math.min(constraints.maxWidth * 0.85, 120.0);
+              return SizedBox(
+                height: chartSize,
+                width: chartSize,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text(
-                      '${score.round()}%',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: scoreColor,
-                        height: 1,
+                    CustomPaint(
+                      size: Size(chartSize, chartSize),
+                      painter: _PieChartPainter(
+                        gotItPct: _animGotIt,
+                        sortOfPct: _animSortOf,
+                        lostPct: _animLost,
+                        noVotePct: _animNoVote,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'understanding',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textMuted,
-                      ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${score.round()}%',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: scoreColor,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        const Text(
+                          'score',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
           const SizedBox(height: 12),
-          // Legend row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _pieLegend(AppColors.success, 'Got it', _gotItCount),
-              _pieLegend(AppColors.amber, 'Sort of', _sortOfCount),
-              _pieLegend(AppColors.warning, 'Lost', _lostCount),
-              _pieLegend(AppColors.textMuted, 'No vote', _noVoteCount),
-            ],
-          ),
+          // Vertical legend
+          _pieLegend(AppColors.success, 'Got it', _gotItCount),
+          const SizedBox(height: 6),
+          _pieLegend(AppColors.amber, 'Sort of', _sortOfCount),
+          const SizedBox(height: 6),
+          _pieLegend(AppColors.warning, 'Lost', _lostCount),
+          const SizedBox(height: 6),
+          _pieLegend(AppColors.textMuted, 'No vote', _noVoteCount),
         ],
       ),
     );
   }
 
   Widget _pieLegend(Color c, String label, int count) {
-    return Column(
+    return Row(
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                  color: c, borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(width: 4),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w500)),
-          ],
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(2),
+          ),
         ),
-        const SizedBox(height: 1),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
         Text(
           '$count',
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
             color: c,
           ),
         ),
       ],
+    );
+  }
+
+  // ── Question Queue Section (right side) ────────────────────────────────
+  Widget _buildQuestionQueueSection() {
+    final pendingCount = _questions.where((q) => !q.isAddressed).length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Header — fixed
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.question_answer_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Question Queue',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: pendingCount > 0
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$pendingCount pending',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: pendingCount > 0
+                          ? AppColors.primary
+                          : AppColors.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: AppColors.divider),
+          // Scrollable question list
+          Expanded(
+            child: _questions.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.forum_outlined,
+                          size: 32,
+                          color: AppColors.textMuted,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'No questions yet',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _questions.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final q = _questions[index];
+                      return _buildQuestionCard(q, index);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionCard(StudentQuestion q, int index) {
+    final isAddressed = q.isAddressed;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: isAddressed
+            ? AppColors.success.withValues(alpha: 0.04)
+            : AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isAddressed
+              ? AppColors.success.withValues(alpha: 0.2)
+              : AppColors.divider,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Question text
+          Text(
+            q.text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: isAddressed
+                  ? AppColors.textSecondary
+                  : AppColors.textPrimary,
+              height: 1.4,
+              decoration: isAddressed ? TextDecoration.lineThrough : null,
+              decorationColor: AppColors.textMuted,
+            ),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          // Bottom row: upvotes + time + addressed toggle
+          Row(
+            children: [
+              // Upvotes
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 10,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${q.upvotes}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                q.timeAgo,
+                style: const TextStyle(
+                  fontSize: 9,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              // Mark as addressed toggle
+              GestureDetector(
+                onTap: () => _markQuestionAddressed(index),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isAddressed
+                        ? AppColors.success.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isAddressed
+                          ? AppColors.success.withValues(alpha: 0.3)
+                          : AppColors.divider,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isAddressed
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        size: 12,
+                        color: isAddressed
+                            ? AppColors.success
+                            : AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        isAddressed ? 'Done' : 'Mark',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: isAddressed
+                              ? AppColors.success
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -912,29 +1272,34 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       animation: _pulseAnimation,
       builder: (context, child) {
         return Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.warningLight
-                .withValues(alpha: 0.6 + (_pulseAnimation.value * 0.4)),
+            color: AppColors.warningLight.withValues(
+              alpha: 0.6 + (_pulseAnimation.value * 0.4),
+            ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: AppColors.warningBorder
-                  .withValues(alpha: _pulseAnimation.value),
+              color: AppColors.warningBorder.withValues(
+                alpha: _pulseAnimation.value,
+              ),
               width: 1.5,
             ),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: AppColors.warning.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.lightbulb_rounded,
-                    size: 20, color: AppColors.warning),
+                child: const Icon(
+                  Icons.lightbulb_rounded,
+                  size: 16,
+                  color: AppColors.warning,
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -942,16 +1307,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     Text(
                       'Understanding is at ${_understandingScore.round()}%',
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: AppColors.warning,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     const Text(
                       'Consider slowing down or trying a quick example',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w500,
                         color: AppColors.textSecondary,
                       ),
@@ -970,8 +1335,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Icon(Icons.close_rounded,
-                      size: 16, color: AppColors.warning),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: AppColors.warning,
+                  ),
                 ),
               ),
             ],
@@ -1003,12 +1371,14 @@ class _PieChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2;
-    const strokeWidth = 22.0;
-    const gapAngle = 0.04; // small gap between segments
+    const strokeWidth = 16.0;
+    const gapAngle = 0.04;
 
-    final rect = Rect.fromCircle(center: center, radius: radius - strokeWidth / 2);
+    final rect = Rect.fromCircle(
+      center: center,
+      radius: radius - strokeWidth / 2,
+    );
 
-    // Segments: Got it, Sort of, Lost, No vote
     final segments = <_PieSegment>[
       _PieSegment(gotItPct, const Color(0xFF10B981)),
       _PieSegment(sortOfPct, const Color(0xFFF59E0B)),
@@ -1016,12 +1386,11 @@ class _PieChartPainter extends CustomPainter {
       _PieSegment(noVotePct, const Color(0xFFCBD5E1)),
     ];
 
-    // Count non-zero segments for gap calculation
     final nonZeroSegments = segments.where((s) => s.fraction > 0).length;
     final totalGap = nonZeroSegments > 1 ? gapAngle * nonZeroSegments : 0.0;
     final availableSweep = 2 * math.pi - totalGap;
 
-    // Draw background circle
+    // Background circle
     final bgPaint = Paint()
       ..color = const Color(0xFFF1F5F9)
       ..style = PaintingStyle.stroke
@@ -1029,7 +1398,7 @@ class _PieChartPainter extends CustomPainter {
     canvas.drawCircle(center, radius - strokeWidth / 2, bgPaint);
 
     // Draw segments
-    double startAngle = -math.pi / 2; // Start from top
+    double startAngle = -math.pi / 2;
 
     for (final seg in segments) {
       if (seg.fraction <= 0) continue;

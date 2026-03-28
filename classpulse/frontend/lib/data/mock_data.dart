@@ -678,3 +678,64 @@ final Map<String, LectureSlot> activeJoinCodes = {
   '7251': const LectureSlot(time: '09:00 – 09:50', className: 'Class 10A', subject: 'Science', topic: 'Electricity & Circuits', isCurrentOrPast: true, joinCode: '7251'),
   '1234': const LectureSlot(time: 'Live', className: 'Class 10A', subject: 'English', topic: 'Shakespearean Sonnets', isCurrentOrPast: true, joinCode: '1234'),
 };
+
+// ─── Live Question Queue ──────────────────────────────────────────────────────
+
+class StudentQuestion {
+  final String text;
+  final String timeAgo;
+  final int upvotes;
+  final bool isAddressed;
+
+  const StudentQuestion({
+    required this.text,
+    required this.timeAgo,
+    this.upvotes = 1,
+    this.isAddressed = false,
+  });
+}
+
+final List<StudentQuestion> mockQuestionQueue = const [
+  StudentQuestion(
+    text: 'Can you explain the difference between 1NF and 2NF with an example?',
+    timeAgo: '2m ago',
+    upvotes: 5,
+  ),
+  StudentQuestion(
+    text: 'What happens if a table has partial dependency — is it still in 2NF?',
+    timeAgo: '3m ago',
+    upvotes: 3,
+  ),
+  StudentQuestion(
+    text: 'Is BCNF always stricter than 3NF? Can you give a case where they differ?',
+    timeAgo: '4m ago',
+    upvotes: 7,
+  ),
+  StudentQuestion(
+    text: 'How do we identify transitive dependencies in a relation?',
+    timeAgo: '5m ago',
+    upvotes: 2,
+  ),
+  StudentQuestion(
+    text: 'Can a table be in 3NF but not in BCNF?',
+    timeAgo: '6m ago',
+    upvotes: 4,
+    isAddressed: true,
+  ),
+  StudentQuestion(
+    text: 'What are the practical downsides of over-normalizing a database?',
+    timeAgo: '7m ago',
+    upvotes: 6,
+  ),
+  StudentQuestion(
+    text: 'Could you show the decomposition steps for converting a 2NF table to 3NF?',
+    timeAgo: '8m ago',
+    upvotes: 1,
+  ),
+  StudentQuestion(
+    text: 'Why do we need normalization if we can just use joins?',
+    timeAgo: '10m ago',
+    upvotes: 3,
+    isAddressed: true,
+  ),
+];

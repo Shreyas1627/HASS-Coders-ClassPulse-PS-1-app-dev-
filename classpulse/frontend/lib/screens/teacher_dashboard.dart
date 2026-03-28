@@ -5,6 +5,7 @@ import '../data/mock_data.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/history_tab.dart';
 import 'live_session_screen.dart';
+import 'login_screen.dart';
 
 class TeacherDashboard extends StatefulWidget {
   const TeacherDashboard({super.key});
@@ -289,8 +290,11 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               // Logout
               GestureDetector(
                 onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pop(context); // Go back to login
+                  Navigator.pop(context); // Close profile sheet
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
                 },
                 child: Container(
                   width: double.infinity,
@@ -335,6 +339,7 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
   final _classController = TextEditingController();
   final _subjectController = TextEditingController();
   final _topicController = TextEditingController();
+  final _subtopicController = TextEditingController();
   DateTime? _selectedDateTime;
 
   @override
@@ -342,6 +347,7 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
     _classController.dispose();
     _subjectController.dispose();
     _topicController.dispose();
+    _subtopicController.dispose();
     super.dispose();
   }
 
@@ -515,6 +521,15 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
                 label: 'Topic',
                 hint: 'e.g. Algebraic Expressions',
                 icon: Icons.topic_outlined,
+              ),
+              const SizedBox(height: 14),
+
+              // Subtopic field (optional)
+              _buildTextField(
+                controller: _subtopicController,
+                label: 'Subtopic (Optional)',
+                hint: 'e.g. Factorization, Quadratic Formula',
+                icon: Icons.subdirectory_arrow_right_rounded,
               ),
               const SizedBox(height: 14),
 

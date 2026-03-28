@@ -6,6 +6,7 @@ import 'tabs/student_home_tab.dart';
 import 'tabs/student_sessions_tab.dart';
 import 'student_session_screen.dart';
 import '../widgets/scanner_overlay.dart';
+import 'login_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -223,13 +224,41 @@ class _StudentDashboardState extends State<StudentDashboard> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          body: Stack(
-            children: [
-              Container(color: Colors.black),
-              ScannerOverlay(onClose: () => Navigator.pop(context)),
-            ],
+          body: ScannerOverlay(
+            onClose: () => Navigator.pop(context),
+            onCodeScanned: (code) {
+              Navigator.pop(context);
+              final joinCode = code.length >= 4
+                  ? code.substring(code.length - 4)
+                  : code;
+              _joinWithCode(joinCode);
+            },
+            onEnterCodeManually: () {
+              Navigator.pop(context); // Close scanner
+              // Show join sheet with code input already open
+              _showJoinSheetWithCodeInput();
+            },
           ),
         ),
+      ),
+    );
+  }
+
+  void _showJoinSheetWithCodeInput() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _JoinSessionSheet(
+        onJoinByCode: (code) {
+          Navigator.pop(ctx);
+          _joinWithCode(code);
+        },
+        onScanQR: () {
+          Navigator.pop(ctx);
+          _showScanner();
+        },
+        startWithCodeInput: true,
       ),
     );
   }
@@ -302,8 +331,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
               const SizedBox(height: 24),
               GestureDetector(
                 onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pop(context);
+                  Navigator.pop(context); // Close profile sheet
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
                 },
                 child: Container(
                   width: double.infinity,
@@ -338,10 +370,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
 class _JoinSessionSheet extends StatefulWidget {
   final Function(String code) onJoinByCode;
   final VoidCallback onScanQR;
+  final bool startWithCodeInput;
 
   const _JoinSessionSheet({
     required this.onJoinByCode,
     required this.onScanQR,
+    this.startWithCodeInput = false,
   });
 
   @override
@@ -349,45 +383,50 @@ class _JoinSessionSheet extends StatefulWidget {
 }
 
 class _JoinSessionSheetState extends State<_JoinSessionSheet> {
-  bool _showCodeInput = false;
-  final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
+  late bool _showCodeInput;
+  final TextEditingController _codeController = TextEditingController();
+  final FocusNode _codeFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _showCodeInput = widget.startWithCodeInput;
+
+    // Auto-focus if starting with code input
+    if (_showCodeInput) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) _codeFocusNode.requestFocus();
+      });
+    }
+
+    // Listen for changes to rebuild the UI
+    _codeController.addListener(() {
+      setState(() {});
+    });
+  }
 
   @override
   void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
+    _codeController.dispose();
+    _codeFocusNode.dispose();
     super.dispose();
   }
 
-  bool get _isCodeComplete =>
-      _controllers.every((c) => c.text.isNotEmpty);
-
-  String get _fullCode =>
-      _controllers.map((c) => c.text).join();
-
-  void _onDigitChanged(int index, String value) {
-    if (value.isNotEmpty && index < 3) {
-      _focusNodes[index + 1].requestFocus();
-    }
-    setState(() {});
-
-    // Auto-close keyboard and enable join when all filled
-    if (_isCodeComplete) {
-      FocusScope.of(context).unfocus();
-    }
-  }
+  bool get _isCodeComplete => _codeController.text.length == 4;
 
   void _onJoin() {
     if (_isCodeComplete) {
       HapticFeedback.mediumImpact();
-      widget.onJoinByCode(_fullCode);
+      widget.onJoinByCode(_codeController.text);
     }
+  }
+
+  void _switchToCodeInput() {
+    HapticFeedback.lightImpact();
+    setState(() => _showCodeInput = true);
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _codeFocusNode.requestFocus();
+    });
   }
 
   @override
@@ -446,13 +485,7 @@ class _JoinSessionSheetState extends State<_JoinSessionSheet> {
                 title: 'Join by Code',
                 subtitle: 'Enter 4-digit session code',
                 color: AppColors.primary,
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() => _showCodeInput = true);
-                  Future.delayed(const Duration(milliseconds: 100), () {
-                    _focusNodes[0].requestFocus();
-                  });
-                },
+                onTap: _switchToCodeInput,
               ),
               const SizedBox(height: 12),
               _buildOptionTile(
@@ -463,48 +496,91 @@ class _JoinSessionSheetState extends State<_JoinSessionSheet> {
                 onTap: widget.onScanQR,
               ),
             ] else ...[
-              // Code input with 4 boxes
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(4, (i) {
-                  return Container(
-                    width: 56,
-                    height: 64,
-                    margin: EdgeInsets.only(right: i < 3 ? 12 : 0),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceAlt,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _focusNodes[i].hasFocus
-                            ? AppColors.primary
-                            : _controllers[i].text.isNotEmpty
-                                ? AppColors.primary.withValues(alpha: 0.3)
-                                : AppColors.divider,
-                        width: _focusNodes[i].hasFocus ? 2 : 1.5,
+              // ── Code input using single hidden TextField ──────────
+              GestureDetector(
+                onTap: () => _codeFocusNode.requestFocus(),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Hidden text field that handles all input
+                    Opacity(
+                      opacity: 0,
+                      child: SizedBox(
+                        height: 0,
+                        child: TextField(
+                          controller: _codeController,
+                          focusNode: _codeFocusNode,
+                          keyboardType: TextInputType.number,
+                          maxLength: 4,
+                          autofocus: true,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          onChanged: (value) {
+                            if (value.length == 4) {
+                              _codeFocusNode.unfocus();
+                            }
+                          },
+                        ),
                       ),
                     ),
-                    child: TextField(
-                      controller: _controllers[i],
-                      focusNode: _focusNodes[i],
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      maxLength: 1,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                      ),
-                      decoration: const InputDecoration(
-                        counterText: '',
-                        border: InputBorder.none,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      onChanged: (v) => _onDigitChanged(i, v),
+                    // Visual digit boxes
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(4, (i) {
+                        final text = _codeController.text;
+                        final hasDigit = i < text.length;
+                        final isActive = i == text.length && _codeFocusNode.hasFocus;
+                        final isFilled = hasDigit;
+
+                        return Container(
+                          width: 56,
+                          height: 64,
+                          margin: EdgeInsets.only(right: i < 3 ? 12 : 0),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceAlt,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isActive
+                                  ? AppColors.primary
+                                  : isFilled
+                                      ? AppColors.primary.withValues(alpha: 0.3)
+                                      : AppColors.divider,
+                              width: isActive ? 2 : 1.5,
+                            ),
+                          ),
+                          child: Center(
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 100),
+                              child: hasDigit
+                                  ? Text(
+                                      text[i],
+                                      key: ValueKey('digit_${i}_${text[i]}'),
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    )
+                                  : isActive
+                                      ? Container(
+                                          key: const ValueKey('cursor'),
+                                          width: 2,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary,
+                                            borderRadius:
+                                                BorderRadius.circular(1),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                            ),
+                          ),
+                        );
+                      }),
                     ),
-                  );
-                }),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
               // Join button
@@ -539,9 +615,7 @@ class _JoinSessionSheetState extends State<_JoinSessionSheet> {
               GestureDetector(
                 onTap: () {
                   setState(() => _showCodeInput = false);
-                  for (final c in _controllers) {
-                    c.clear();
-                  }
+                  _codeController.clear();
                 },
                 child: const Text(
                   'Back to options',
@@ -622,3 +696,4 @@ class _JoinSessionSheetState extends State<_JoinSessionSheet> {
     );
   }
 }
+

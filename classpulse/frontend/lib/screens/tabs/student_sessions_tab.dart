@@ -16,8 +16,11 @@ class StudentSessionsTab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
           child: Row(
             children: [
-              const Icon(Icons.receipt_long_rounded,
-                  size: 18, color: AppColors.primary),
+              const Icon(
+                Icons.receipt_long_rounded,
+                size: 18,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'My Past Sessions',
@@ -30,8 +33,10 @@ class StudentSessionsTab extends StatelessWidget {
               ),
               const Spacer(),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -65,9 +70,7 @@ class StudentSessionsTab extends StatelessWidget {
               const SizedBox(width: 8),
               _buildStatChip(
                 'Maybe',
-                studentPastSessions
-                    .where((s) => s.signal == 'maybe')
-                    .length,
+                studentPastSessions.where((s) => s.signal == 'maybe').length,
                 AppColors.amber,
               ),
               const SizedBox(width: 8),
@@ -89,7 +92,7 @@ class StudentSessionsTab extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
             itemCount: studentPastSessions.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final session = studentPastSessions[index];
               return _buildSessionCard(session);
@@ -182,8 +185,11 @@ class StudentSessionsTab extends StatelessWidget {
                   color: AppColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.menu_book_rounded,
-                    size: 18, color: AppColors.primary),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -226,8 +232,7 @@ class StudentSessionsTab extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: signalColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
@@ -262,8 +267,11 @@ class StudentSessionsTab extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.chat_bubble_outline_rounded,
-                      size: 13, color: AppColors.textMuted),
+                  const Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    size: 13,
+                    color: AppColors.textMuted,
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
