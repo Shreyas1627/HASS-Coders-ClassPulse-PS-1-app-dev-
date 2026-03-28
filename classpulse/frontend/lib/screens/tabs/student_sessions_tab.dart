@@ -1,334 +1,199 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
-import '../../data/mock_data.dart';
-import '../session_summary_screen.dart';
+import '../../services/api_service.dart';
 
-class StudentSessionsTab extends StatelessWidget {
+class StudentSessionsTab extends StatefulWidget {
   const StudentSessionsTab({super.key});
 
   @override
+  State<StudentSessionsTab> createState() => _StudentSessionsTabState();
+}
+
+class _StudentSessionsTabState extends State<StudentSessionsTab> {
+  List<Map<String, dynamic>> _pastSessions = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _isLoading = true);
+    final rn = ApiService.rollNumber ?? 'student_app';
+    final sessions = await ApiService.getStudentHistory(rn);
+    if (mounted) {
+      setState(() {
+        _pastSessions = sessions;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Color _signalColor(String signal) {
+    switch (signal) {
+      case 'understood': return AppColors.success;
+      case 'maybe': return AppColors.amber;
+      case 'not_understood': return AppColors.warning;
+      default: return AppColors.textMuted;
+    }
+  }
+
+  IconData _signalIcon(String signal) {
+    switch (signal) {
+      case 'understood': return Icons.check_circle_rounded;
+      case 'maybe': return Icons.help_rounded;
+      case 'not_understood': return Icons.cancel_rounded;
+      default: return Icons.radio_button_unchecked;
+    }
+  }
+
+  String _signalLabel(String signal) {
+    switch (signal) {
+      case 'understood': return 'Got It';
+      case 'maybe': return 'Sort Of';
+      case 'not_understood': return 'Lost';
+      default: return 'No Signal';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _loadHistory,
+      child: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5))
+          : _pastSessions.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  itemCount: _pastSessions.length + 1,
+                  itemBuilder: (ctx, index) {
+                    if (index == 0) {
+                      return const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'My Sessions',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        ),
+                      );
+                    }
+                    final s = _pastSessions[index - 1];
+                    return _buildSessionCard(s);
+                  },
+                ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return ListView(
       children: [
-        const SizedBox(height: 8),
-        // Header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-          child: Row(
+        const SizedBox(height: 100),
+        Center(
+          child: Column(
             children: [
-              const Icon(
-                Icons.receipt_long_rounded,
-                size: 18,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'My Past Sessions',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
+                width: 64, height: 64,
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
+                  shape: BoxShape.circle,
                 ),
-                child: Text(
-                  '${studentPastSessions.length} sessions',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  ),
-                ),
+                child: const Icon(Icons.receipt_long_outlined, color: AppColors.primary, size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text('No Past Sessions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              const SizedBox(height: 6),
+              const Text(
+                'Your session history will appear\nhere after you attend classes.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 4),
-
-        // Stats row
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              _buildStatChip(
-                'Got it',
-                studentPastSessions
-                    .where((s) => s.signal == 'understood')
-                    .length,
-                AppColors.success,
-              ),
-              const SizedBox(width: 8),
-              _buildStatChip(
-                'Sort of',
-                studentPastSessions.where((s) => s.signal == 'maybe').length,
-                AppColors.amber,
-              ),
-              const SizedBox(width: 8),
-              _buildStatChip(
-                'Lost',
-                studentPastSessions
-                    .where((s) => s.signal == 'not_understood')
-                    .length,
-                AppColors.warning,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Sessions list
-        Expanded(
-          child: ListView.separated(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-            itemCount: studentPastSessions.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final session = studentPastSessions[index];
-              return _buildSessionCard(context, session);
-            },
           ),
         ),
       ],
     );
   }
 
-  Widget _buildStatChip(String label, int count, Color color) {
-    return Expanded(
+  Widget _buildSessionCard(Map<String, dynamic> session) {
+    final subject = session['subject'] ?? '';
+    final topic = session['topic'] ?? '';
+    final date = session['date'] ?? '';
+    final signal = session['signal'] ?? 'none';
+    final doubt = session['doubt'] as String?;
+    final color = _signalColor(signal);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.divider),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '$count',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSessionCard(BuildContext context, StudentPastSession session) {
-    Color signalColor;
-    IconData signalIcon;
-    String signalLabel;
-
-    switch (session.signal) {
-      case 'understood':
-        signalColor = AppColors.success;
-        signalIcon = Icons.check_circle_rounded;
-        signalLabel = 'Got it';
-        break;
-      case 'maybe':
-        signalColor = AppColors.amber;
-        signalIcon = Icons.help_rounded;
-        signalLabel = 'Sort of';
-        break;
-      default:
-        signalColor = AppColors.warning;
-        signalIcon = Icons.cancel_rounded;
-        signalLabel = 'Lost';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.divider, width: 1),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 6,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Subject icon
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.menu_book_rounded,
-                  size: 18,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      session.subject,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      session.topic,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              // Date
-              Text(
-                session.date,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Signal + doubt
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: signalColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(signalIcon, size: 13, color: signalColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      signalLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: signalColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              // View Summary button
-              GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          SessionSummaryScreen.fromStudentSession(
-                        session: session,
-                      ),
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
+            Row(
+              children: [
+                Container(
+                  width: 36, height: 36,
                   decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(8),
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Icon(_signalIcon(signal), color: color, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.assessment_rounded,
-                          size: 13, color: Colors.white),
-                      SizedBox(width: 4),
-                      Text(
-                        'Summary',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+                      Text(topic.isNotEmpty ? topic : subject, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text('$subject · $date', style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (session.doubt != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    size: 13,
-                    color: AppColors.textMuted,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      session.doubt!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontStyle: FontStyle.italic,
+                  child: Text(_signalLabel(signal), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+                ),
+              ],
+            ),
+            if (doubt != null && doubt.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: AppColors.textMuted),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        doubt,
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic, height: 1.4),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

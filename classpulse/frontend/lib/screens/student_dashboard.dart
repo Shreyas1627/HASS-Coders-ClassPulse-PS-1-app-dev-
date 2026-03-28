@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
+import '../services/api_service.dart';
 import 'tabs/student_home_tab.dart';
 import 'tabs/student_sessions_tab.dart';
 import 'student_session_screen.dart';
@@ -197,9 +198,23 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  void _joinWithCode(String code) {
-    final session = activeJoinCodes[code];
-    if (session != null) {
+  void _joinWithCode(String code) async {
+    final result = await ApiService.joinSession(
+      sessionCode: code,
+      rollNumber: ApiService.teacherId ?? 'student_app',
+    );
+
+    if (!mounted) return;
+
+    if (result != null && result['status'] == 'success') {
+      final session = LectureSlot(
+        time: 'Live',
+        className: result['class_name'] ?? 'Class',
+        subject: result['subject'] ?? 'Subject',
+        topic: result['topic'] ?? 'Topic',
+        isCurrentOrPast: true,
+        joinCode: code,
+      );
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => StudentSessionScreen(session: session),
@@ -228,9 +243,22 @@ class _StudentDashboardState extends State<StudentDashboard> {
             onClose: () => Navigator.pop(context),
             onCodeScanned: (code) {
               Navigator.pop(context);
-              final joinCode = code.length >= 4
-                  ? code.substring(code.length - 4)
-                  : code;
+              // Extract session code from QR URL or plain code
+              String joinCode = code;
+              try {
+                final uri = Uri.parse(code);
+                final codeParam = uri.queryParameters['code'];
+                if (codeParam != null && codeParam.length == 4) {
+                  joinCode = codeParam;
+                }
+              } catch (_) {}
+              // Fallback: take last 4 chars if it looks like a number
+              if (joinCode.length > 4) {
+                final digits = joinCode.replaceAll(RegExp(r'\D'), '');
+                if (digits.length >= 4) {
+                  joinCode = digits.substring(digits.length - 4);
+                }
+              }
               _joinWithCode(joinCode);
             },
             onEnterCodeManually: () {
@@ -312,18 +340,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                studentName,
-                style: TextStyle(
+              Text(
+                ApiService.teacherId ?? 'Student',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                '$studentClassName · Roll No. 14',
-                style: const TextStyle(
+              const Text(
+                'Student',
+                style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
                 ),

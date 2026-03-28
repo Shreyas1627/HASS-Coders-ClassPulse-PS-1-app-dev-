@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
-import '../../data/mock_data.dart';
+import '../../services/api_service.dart';
 
 class StudentsTab extends StatefulWidget {
   const StudentsTab({super.key});
@@ -10,273 +11,235 @@ class StudentsTab extends StatefulWidget {
 }
 
 class _StudentsTabState extends State<StudentsTab> {
-  // Track which class panels are expanded
-  final Map<String, bool> _expanded = {};
+  String? _selectedClass;
+  Map<String, List<Map<String, dynamic>>> _studentsByClass = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // Auto-expand the first class
-    final firstKey = studentsByClass.keys.first;
-    _expanded[firstKey] = true;
+    _loadStudents();
+  }
+
+  Future<void> _loadStudents() async {
+    setState(() => _isLoading = true);
+    final data = await ApiService.getStudents();
+    if (data != null && mounted) {
+      final raw = data['students_by_class'] as Map<String, dynamic>? ?? {};
+      final parsed = <String, List<Map<String, dynamic>>>{};
+      raw.forEach((key, value) {
+        parsed[key] = List<Map<String, dynamic>>.from(value as List);
+      });
+      setState(() {
+        _studentsByClass = parsed;
+        _isLoading = false;
+      });
+    } else if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final classes = studentsByClass.keys.toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5))
+              : _studentsByClass.isEmpty
+                  ? _buildEmptyState()
+                  : _selectedClass == null
+                      ? _buildClassList()
+                      : _buildStudentList(),
+        ),
+      ],
+    );
+  }
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
         children: [
-          // Page header
-          Row(
-            children: [
-              const Icon(Icons.people_outline_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 8),
-              const Text(
-                'Student Details',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.3,
+          if (_selectedClass != null)
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                setState(() => _selectedClass = null);
+              },
+              child: Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: AppColors.textSecondary),
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Insights by class',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textMuted,
-              fontWeight: FontWeight.w500,
             ),
+          Text(
+            _selectedClass ?? 'Students',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 16),
-
-          ...classes.map((className) => _buildClassAccordion(className)),
         ],
       ),
     );
   }
 
-  Widget _buildClassAccordion(String className) {
-    final isExpanded = _expanded[className] ?? false;
-    final students = studentsByClass[className] ?? [];
-    final studentCount = students.length;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isExpanded ? AppColors.primary.withValues(alpha: 0.3) : AppColors.divider,
-          width: 1.5,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 8,
-            offset: Offset(0, 2),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.people_outline_rounded, color: AppColors.primary, size: 32),
+          ),
+          const SizedBox(height: 16),
+          const Text('No Students Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 6),
+          const Text(
+            'Students will appear here once\nthey join your sessions.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          // Header
-          GestureDetector(
+    );
+  }
+
+  Widget _buildClassList() {
+    final classes = _studentsByClass.keys.toList();
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: classes.length,
+      itemBuilder: (context, index) {
+        final cn = classes[index];
+        final count = _studentsByClass[cn]!.length;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: GestureDetector(
             onTap: () {
-              setState(() {
-                _expanded[className] = !isExpanded;
-              });
+              HapticFeedback.lightImpact();
+              setState(() => _selectedClass = cn);
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isExpanded
-                    ? AppColors.primary.withValues(alpha: 0.04)
-                    : Colors.transparent,
-                borderRadius: isExpanded
-                    ? const BorderRadius.only(
-                        topLeft: Radius.circular(14),
-                        topRight: Radius.circular(14))
-                    : BorderRadius.circular(14),
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.divider),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 40, height: 40,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: AppColors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Center(
-                      child: Icon(
-                        Icons.class_outlined,
-                        size: 18,
-                        color: AppColors.primary,
-                      ),
-                    ),
+                    child: const Icon(Icons.groups_outlined, size: 20, color: AppColors.primary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          className,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '$studentCount students',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        Text(cn, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                        const SizedBox(height: 3),
+                        Text('$count student${count != 1 ? 's' : ''}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
                       ],
                     ),
                   ),
-                  AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 250),
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: AppColors.textMuted,
-                      size: 24,
-                    ),
-                  ),
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 20),
                 ],
               ),
             ),
           ),
-
-          // Student list
-          AnimatedCrossFade(
-            firstChild: const SizedBox(width: double.infinity, height: 0),
-            secondChild: Column(
-              children: [
-                Divider(height: 1, color: AppColors.divider),
-                ...students.asMap().entries.map((entry) {
-                  final idx = entry.key;
-                  final student = entry.value;
-                  return Column(
-                    children: [
-                      _buildStudentRow(student),
-                      if (idx < students.length - 1)
-                        Divider(
-                          height: 1,
-                          indent: 68,
-                          color: AppColors.divider.withValues(alpha: 0.6),
-                        ),
-                    ],
-                  );
-                }),
-              ],
-            ),
-            crossFadeState:
-                isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 250),
-            sizeCurve: Curves.easeInOut,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildStudentRow(StudentInfo student) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: 40,
-            height: 40,
+  Widget _buildStudentList() {
+    final students = _studentsByClass[_selectedClass] ?? [];
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: students.length,
+      itemBuilder: (context, index) {
+        final s = students[index];
+        final name = s['name'] ?? 'Student';
+        final initials = s['initials'] ?? name.substring(0, 2).toUpperCase();
+        final insight = s['insight'] ?? '';
+        final isFlagged = s['is_flagged'] == true;
+        final colorVal = s['avatar_color'] ?? 0xFF6366F1;
+        final color = Color(colorVal is int ? colorVal : int.parse(colorVal.toString()));
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Container(
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: student.avatarColor.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                student.initials,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: student.avatarColor,
-                ),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isFlagged ? AppColors.warning.withValues(alpha: 0.3) : AppColors.divider,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-
-          // Name
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                Text(
-                  student.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: color.withValues(alpha: 0.15),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  student.insight,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: student.isFlagged
-                        ? AppColors.warning
-                        : AppColors.textMuted,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          ),
+                          if (isFlagged) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.warningLight,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text('At Risk', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.warning)),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(insight, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-
-          // Flagged badge
-          if (student.isFlagged)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.warningLight,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.flag_rounded, size: 12, color: AppColors.warning),
-                  const SizedBox(width: 3),
-                  Text(
-                    'At Risk',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.warning,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
+import '../data/mock_data.dart';
+import '../services/api_service.dart';
 import '../widgets/pin_display.dart';
 import '../widgets/numpad.dart';
 import '../widgets/scanner_overlay.dart';
 import 'login_screen.dart';
+import 'student_session_screen.dart';
 
 class JoinScreen extends StatefulWidget {
   const JoinScreen({super.key});
@@ -63,20 +66,43 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _onJoinPressed() {
+  void _onJoinPressed() async {
     if (_pin.length == 4) {
       HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Joining session with code: $_pin',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-          ),
-          backgroundColor: AppColors.primary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+      final result = await ApiService.joinSession(
+        sessionCode: _pin,
+        rollNumber: 'student_app',
       );
+
+      if (!mounted) return;
+
+      if (result != null && result['status'] == 'success') {
+        final session = LectureSlot(
+          time: 'Live',
+          className: result['class_name'] ?? 'Class',
+          subject: result['subject'] ?? 'Subject',
+          topic: result['topic'] ?? 'Topic',
+          isCurrentOrPast: true,
+          joinCode: _pin,
+        );
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => StudentSessionScreen(session: session),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Invalid code. No active session found.',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+            ),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
     }
   }
 

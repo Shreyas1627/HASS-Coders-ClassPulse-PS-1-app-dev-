@@ -1,4 +1,3 @@
-import google.generativeai as genai
 import requests
 import os
 from core.config import settings

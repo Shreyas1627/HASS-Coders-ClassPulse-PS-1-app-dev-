@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+supabase
+python-dotenv
+pydantic
+qrcode[pil]
+Pillow
+httpx
+groq

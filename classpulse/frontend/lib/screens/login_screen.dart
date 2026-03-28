@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
+import '../services/api_service.dart';
 import 'teacher_dashboard.dart';
 import 'student_dashboard.dart';
 
@@ -32,6 +33,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void _onLogin() {
     if (!_isFormValid) return;
     HapticFeedback.mediumImpact();
+
+    // Store identity for API calls
+    final email = _emailController.text.trim();
+    ApiService.setTeacherId(email);
 
     final destination = _role == 'teacher'
         ? const TeacherDashboard()

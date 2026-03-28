@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
+import '../services/api_service.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/history_tab.dart';
 import 'live_session_screen.dart';
@@ -253,9 +254,9 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Prof. Rajesh Kumar',
-                style: TextStyle(
+              Text(
+                ApiService.teacherId ?? 'Teacher',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
@@ -263,27 +264,10 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'rajesh.kumar@classpulse.edu',
+                'Teacher',
                 style: TextStyle(
                   fontSize: 14,
                   color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Teacher · Mathematics & Science',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
-                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -423,18 +407,54 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
     return '${months[d.month]} ${d.day}, ${d.year} at $hour:$min $amPm';
   }
 
-  void _onCreateSession() {
-    if (!_isFormValid) return;
+  bool _isCreating = false;
+
+  void _onCreateSession() async {
+    if (!_isFormValid || _isCreating) return;
     HapticFeedback.mediumImpact();
 
-    // Create a mock session and navigate to it
+    setState(() => _isCreating = true);
+
+    final className = _classController.text.trim();
+    final subject = _subjectController.text.trim();
+    final topic = _topicController.text.trim();
+    final subtopic = _subtopicController.text.trim();
+
+    // Try API first
+    final apiResult = await ApiService.createSession(
+      className: className,
+      subject: subject,
+      topic: topic,
+      subtopic: subtopic.isNotEmpty ? subtopic : null,
+    );
+
+    if (!mounted) return;
+
+    if (apiResult == null || apiResult['session_code'] == null) {
+      setState(() => _isCreating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Failed to connect to backend. Check network or IP address.',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          ),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+      return;
+    }
+
+    final joinCode = apiResult['session_code'];
+
     final newSession = LectureSlot(
       time: _formattedDateTime.isNotEmpty ? _formattedDateTime : 'Now',
-      className: _classController.text.trim(),
-      subject: _subjectController.text.trim(),
-      topic: _topicController.text.trim(),
+      className: className,
+      subject: subject,
+      topic: topic,
       isCurrentOrPast: true,
-      joinCode: '${(1000 + (DateTime.now().millisecondsSinceEpoch % 9000))}',
+      joinCode: joinCode,
     );
 
     Navigator.pop(context); // Close sheet

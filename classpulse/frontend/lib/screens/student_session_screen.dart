@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
+import '../services/api_service.dart';
 
 class StudentSessionScreen extends StatefulWidget {
   final LectureSlot session;
@@ -26,19 +27,36 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
   bool _hasUsedChange = false; // true after student uses their one-time change
   bool _isChanging = false; // true while picking a new signal after "Change"
 
-  // Mock questions from other students
-  final List<Map<String, dynamic>> _questions = [
-    {'text': 'Can you explain the difference between abstract classes and interfaces?', 'upvotes': 12, 'upvoted': false},
-    {'text': 'How does this concept apply in real-world scenarios?', 'upvotes': 8, 'upvoted': false},
-    {'text': 'Could you repeat the formula one more time?', 'upvotes': 5, 'upvoted': false},
-    {'text': 'What happens if we use a different approach here?', 'upvotes': 3, 'upvoted': false},
-    {'text': 'Is this going to be covered in the exam?', 'upvotes': 15, 'upvoted': false},
-    {'text': 'Can you provide a numerical example?', 'upvotes': 7, 'upvoted': false},
-    {'text': 'What are the edge cases we should consider?', 'upvotes': 4, 'upvoted': false},
-    {'text': 'How is this different from what we learned last week?', 'upvotes': 6, 'upvoted': false},
-  ];
+  // Real-time questions from other students (fetched from API)
+  List<Map<String, dynamic>> _questions = [];
+  Timer? _questionPollTimer;
 
-  void _toggleUpvote(int index) {
+  @override
+  void initState() {
+    super.initState();
+    _loadQuestions();
+    _questionPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _loadQuestions();
+    });
+  }
+
+  Future<void> _loadQuestions() async {
+    final code = ApiService.sessionCode ?? widget.session.joinCode;
+    final data = await ApiService.pollDashboard(code);
+    if (data != null && mounted) {
+      final apiQuestions = data['questions'] as List<dynamic>? ?? [];
+      setState(() {
+        _questions = apiQuestions.map((q) => <String, dynamic>{
+          'text': (q['translated_text'] ?? q['original_text'] ?? '') as String,
+          'upvotes': (q['upvotes'] ?? 0) as int,
+          'upvoted': false,
+          'id': q['id']?.toString(),
+        }).toList();
+      });
+    }
+  }
+
+  void _toggleUpvote(int index) async {
     HapticFeedback.lightImpact();
     setState(() {
       final q = _questions[index];
@@ -50,11 +68,17 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
         q['upvoted'] = true;
       }
     });
+    // Call upvote API if available
+    final qId = _questions[index]['id'] as String?;
+    if (qId != null) {
+      await ApiService.upvoteQuestion(qId);
+    }
   }
 
   @override
   void dispose() {
     _cooldownTimer?.cancel();
+    _questionPollTimer?.cancel();
     _doubtController.dispose();
     super.dispose();
   }
@@ -84,6 +108,22 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
   void _sendSignal(String signal) {
     if (_buttonsDisabled) return; // ignore taps during cooldown
     HapticFeedback.mediumImpact();
+
+    // Map UI signal to API signal type
+    final apiSignal = signal == 'understood' ? 'got_it'
+        : signal == 'maybe' ? 'sort_of'
+        : 'lost';
+
+    // Send to backend (fire-and-forget)
+    final uuid = ApiService.studentUuid;
+    final code = ApiService.sessionCode ?? widget.session.joinCode;
+    if (uuid != null) {
+      ApiService.sendSignal(
+        sessionCode: code,
+        studentUuid: uuid,
+        signal: apiSignal,
+      );
+    }
 
     if (signal == 'understood') {
       setState(() {
@@ -131,14 +171,36 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
           onSend: () {
             HapticFeedback.mediumImpact();
             Navigator.pop(ctx);
+
+            // Send signal via API
+            final apiSignal = signal == 'maybe' ? 'sort_of' : 'lost';
+            final uuid = ApiService.studentUuid;
+            final code = ApiService.sessionCode ?? widget.session.joinCode;
+            if (uuid != null) {
+              ApiService.sendSignal(
+                sessionCode: code,
+                studentUuid: uuid,
+                signal: apiSignal,
+              );
+            }
+
+            // Submit doubt text if present
+            final doubtText = _doubtController.text.trim();
+            if (doubtText.isNotEmpty && uuid != null) {
+              ApiService.submitDoubt(
+                sessionCode: code,
+                studentUuid: uuid,
+                text: doubtText,
+              );
+            }
+
             setState(() {
               _selectedSignal = signal;
               _signalSent = true;
             });
             _startCooldown();
-            final hasDoubt = _doubtController.text.trim().isNotEmpty;
             _showConfirmation(
-              hasDoubt ? 'Doubt sent! 📝' : 'Response sent!',
+              doubtText.isNotEmpty ? 'Doubt sent! 📝' : 'Response sent!',
               accentColor,
             );
           },

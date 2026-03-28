@@ -10,5 +10,6 @@ class Settings:
     SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL")
+    BASE_URL = os.getenv("BASE_URL", "http://10.60.25.70:8000")
 
 settings = Settings()

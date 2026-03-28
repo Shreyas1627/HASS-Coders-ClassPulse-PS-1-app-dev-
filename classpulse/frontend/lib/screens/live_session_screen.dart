@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
+import '../services/api_service.dart';
 import 'session_summary_screen.dart';
 
 /// Redesigned live session — teacher cockpit view
@@ -46,8 +47,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   @override
   void initState() {
     super.initState();
-    _liveSignals = liveSessionStudents.map((s) => s.signal).toList();
-    _questions = List.from(mockQuestionQueue);
+    _liveSignals = [];
+    _questions = [];
 
     // Initialize animated pie values
     _animGotIt = _gotItPct;
@@ -56,7 +57,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     _animNoVote = _total > 0 ? _noVoteCount / _total : 0;
 
     _signalTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      _simulateSignalChange();
+      _pollDashboard();
     });
 
     _pulseController = AnimationController(
@@ -87,48 +88,86 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     super.dispose();
   }
 
-  void _simulateSignalChange() {
+  /// Poll real data from API — no simulation fallback
+  void _pollDashboard() async {
     if (!mounted) return;
-    final rng = math.Random();
-    final changeCount = rng.nextInt(3) + 1;
 
-    // Capture previous values
-    final prevGotIt = _gotItPct;
-    final prevSortOf = _sortOfPct;
-    final prevLost = _lostPct;
-    final prevNoVote = _total > 0 ? _noVoteCount / _total : 0.0;
+    final data = await ApiService.pollDashboard(widget.session.joinCode);
+    if (data != null && mounted) {
+      final gotIt = data['got_it'] as int? ?? 0;
+      final sortOf = data['sort_of'] as int? ?? 0;
+      final lost = data['lost'] as int? ?? 0;
+      final total = data['total'] as int? ?? (gotIt + sortOf + lost);
+      final noVote = total > 0 ? total - gotIt - sortOf - lost : 0;
 
-    setState(() {
-      _reminderDismissed = false;
-      for (int i = 0; i < changeCount; i++) {
-        final idx = rng.nextInt(_liveSignals.length);
-        _liveSignals[idx] = ComprehensionSignal
-            .values[rng.nextInt(ComprehensionSignal.values.length)];
-      }
-    });
+      // Capture previous values for animation
+      final prevGotIt = _gotItPct;
+      final prevSortOf = _sortOfPct;
+      final prevLost = _lostPct;
+      final prevNoVote = _total > 0 ? _noVoteCount / _total : 0.0;
 
-    // Animate from previous to new values
-    final newGotIt = _gotItPct;
-    final newSortOf = _sortOfPct;
-    final newLost = _lostPct;
-    final newNoVote = _total > 0 ? _noVoteCount / _total : 0.0;
+      // Build signal list from API counts
+      final newSignals = <ComprehensionSignal>[
+        ...List.filled(gotIt, ComprehensionSignal.gotIt),
+        ...List.filled(sortOf, ComprehensionSignal.sortOf),
+        ...List.filled(lost, ComprehensionSignal.lost),
+        ...List.filled(noVote > 0 ? noVote : 0, ComprehensionSignal.noVote),
+      ];
 
-    _pieAnimController.reset();
-    final animation = CurvedAnimation(
-      parent: _pieAnimController,
-      curve: Curves.easeInOutCubic,
-    );
-    animation.addListener(() {
-      if (!mounted) return;
+      // Update questions from API (including questionId)
+      final apiQuestions = data['questions'] as List<dynamic>? ?? [];
+      final newQuestions = apiQuestions.map((q) => StudentQuestion(
+        text: (q['translated_text'] ?? q['original_text'] ?? '') as String,
+        timeAgo: _formatTimeAgo(q['created_at'] as String?),
+        upvotes: (q['upvotes'] ?? 0) as int,
+        isAddressed: (q['is_addressed'] ?? false) as bool,
+        questionId: q['id']?.toString(),
+      )).toList();
+
       setState(() {
-        _animGotIt = prevGotIt + (newGotIt - prevGotIt) * animation.value;
-        _animSortOf = prevSortOf + (newSortOf - prevSortOf) * animation.value;
-        _animLost = prevLost + (newLost - prevLost) * animation.value;
-        _animNoVote = prevNoVote + (newNoVote - prevNoVote) * animation.value;
+        _liveSignals = newSignals;
+        _questions = newQuestions;
       });
-    });
-    _pieAnimController.forward();
+
+      // Animate from previous to new values
+      final newGotIt = _gotItPct;
+      final newSortOf = _sortOfPct;
+      final newLost = _lostPct;
+      final newNoVote2 = _total > 0 ? _noVoteCount / _total : 0.0;
+
+      _pieAnimController.reset();
+      final animation = CurvedAnimation(
+        parent: _pieAnimController,
+        curve: Curves.easeInOutCubic,
+      );
+      animation.addListener(() {
+        if (!mounted) return;
+        setState(() {
+          _animGotIt = prevGotIt + (newGotIt - prevGotIt) * animation.value;
+          _animSortOf = prevSortOf + (newSortOf - prevSortOf) * animation.value;
+          _animLost = prevLost + (newLost - prevLost) * animation.value;
+          _animNoVote = prevNoVote + (newNoVote2 - prevNoVote) * animation.value;
+        });
+      });
+      _pieAnimController.forward();
+    }
+    // If API returns null, we simply keep current state (no fake simulation)
   }
+
+  String _formatTimeAgo(String? isoString) {
+    if (isoString == null) return 'just now';
+    try {
+      final dt = DateTime.parse(isoString);
+      final diff = DateTime.now().difference(dt);
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      return '${diff.inHours}h ago';
+    } catch (_) {
+      return 'just now';
+    }
+  }
+
+
 
   // ── Computed stats ─────────────────────────────────────────────────────
   int get _total => _liveSignals.length;
@@ -190,9 +229,15 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             ),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx); // Close dialog
-              // Navigate to summary, replacing live session
+
+              // Call API to end session
+              final summary = await ApiService.endSession(widget.session.joinCode);
+
+              if (!mounted) return;
+
+              // Use API summary data if available, else use local state
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -201,12 +246,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     subject: widget.session.subject,
                     topic: widget.session.topic,
                     duration: _sessionDuration,
-                    totalStudents: _total,
-                    gotItCount: _gotItCount,
-                    sortOfCount: _sortOfCount,
-                    lostCount: _lostCount,
-                    questionsAsked: _questions.length,
-                    questionsAddressed:
+                    totalStudents: summary?['total_students'] ?? _total,
+                    gotItCount: summary?['got_it'] ?? _gotItCount,
+                    sortOfCount: summary?['sort_of'] ?? _sortOfCount,
+                    lostCount: summary?['lost'] ?? _lostCount,
+                    questionsAsked: summary?['total_questions'] ?? _questions.length,
+                    questionsAddressed: summary?['questions_addressed'] ??
                         _questions.where((q) => q.isAddressed).length,
                   ),
                 ),
@@ -236,6 +281,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(24),
@@ -304,31 +350,51 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
               ),
               const SizedBox(height: 16),
               Container(
-                width: 150,
-                height: 150,
+                width: 180,
+                height: 180,
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppColors.divider, width: 1),
                 ),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.qr_code_2_rounded,
-                      size: 90,
-                      color: AppColors.textPrimary,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Scan to Join',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Image.network(
+                    ApiService.getQrUrl(widget.session.joinCode),
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stack) {
+                      return const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.qr_code_2_rounded, size: 60, color: AppColors.textMuted),
+                          SizedBox(height: 4),
+                          Text('QR unavailable', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Scan to Join',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
@@ -339,17 +405,26 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  void _markQuestionAddressed(int index) {
+  void _markQuestionAddressed(int index) async {
     HapticFeedback.lightImpact();
+    final q = _questions[index];
+    final newAddressed = !q.isAddressed;
+
+    // Optimistic UI update
     setState(() {
-      final q = _questions[index];
       _questions[index] = StudentQuestion(
         text: q.text,
         timeAgo: q.timeAgo,
         upvotes: q.upvotes,
-        isAddressed: !q.isAddressed,
+        isAddressed: newAddressed,
+        questionId: q.questionId,
       );
     });
+
+    // Call API if we have a real question ID
+    if (q.questionId != null) {
+      await ApiService.markQuestionAddressed(q.questionId!, addressed: newAddressed);
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -1378,7 +1453,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 filled: false,
                 onTap: () {
                   HapticFeedback.lightImpact();
-                  _showAIAnswer(q.text);
+                  _showAIAnswer(q.text, questionId: q.questionId);
                 },
               ),
             ],
@@ -1419,123 +1494,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  void _showAIAnswer(String questionText) {
+  void _showAIAnswer(String questionText, {String? questionId}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: AppColors.amber.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.auto_awesome_rounded,
-                        size: 18, color: AppColors.amber),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'AI-Generated Answer',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '"$questionText"',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.amber.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.amber.withValues(alpha: 0.15),
-                    width: 1,
-                  ),
-                ),
-                child: const Text(
-                  'This is a great question! The concept relates to the fundamental principles we covered earlier. '
-                  'In simple terms, the key difference lies in how the underlying mechanism works — '
-                  'one follows a direct approach while the other uses an indirect method. '
-                  'I would recommend reviewing the examples from slides 12-15 for a clearer understanding.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                    height: 1.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              GestureDetector(
-                onTap: () => Navigator.pop(ctx),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'Got it',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: MediaQuery.of(ctx).padding.bottom + 8),
-            ],
-          ),
+        return _AIAnswerSheet(
+          questionText: questionText,
+          questionId: questionId,
         );
       },
     );
@@ -1725,4 +1691,215 @@ class _PieSegment {
   final Color color;
   final Color lightColor;
   const _PieSegment(this.fraction, this.color, this.lightColor);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI Answer Bottom Sheet — calls real API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _AIAnswerSheet extends StatefulWidget {
+  final String questionText;
+  final String? questionId;
+
+  const _AIAnswerSheet({required this.questionText, this.questionId});
+
+  @override
+  State<_AIAnswerSheet> createState() => _AIAnswerSheetState();
+}
+
+class _AIAnswerSheetState extends State<_AIAnswerSheet> {
+  String? _answer;
+  bool _isLoading = true;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAnswer();
+  }
+
+  Future<void> _fetchAnswer() async {
+    if (widget.questionId == null) {
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
+      });
+      return;
+    }
+
+    final result = await ApiService.answerDoubt(questionId: widget.questionId!);
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        if (result != null && result['answer'] != null) {
+          _answer = result['answer'] as String;
+        } else {
+          _hasError = true;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    size: 18, color: AppColors.amber),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'AI-Generated Answer',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '"${widget.questionText}"',
+              style: const TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            Container(
+              padding: const EdgeInsets.all(24),
+              child: const Center(
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.amber,
+                      ),
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      'Generating answer...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_hasError)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.15),
+                  width: 1,
+                ),
+              ),
+              child: const Text(
+                'Could not generate an AI answer. The AI service may be unavailable or the question has no ID.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.amber.withValues(alpha: 0.15),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                _answer ?? '',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Center(
+                child: Text(
+                  'Got it',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+        ],
+      ),
+    );
+  }
 }

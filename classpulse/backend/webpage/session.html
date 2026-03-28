@@ -3,98 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ClassPulse Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-[#F8FAFC] text-[#1E293B] h-screen flex flex-col overflow-hidden relative font-sans select-none">
+    <title>ClassPulse | Live Session</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #F8FAFC;
+            color: #1E293B;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            -webkit-user-select: none;
+            user-select: none;
+            overflow: hidden;
+            position: relative;
+        }
 
-    <header class="bg-white p-5 shadow-sm flex items-center justify-between border-b border-gray-100">
-        <h2 class="text-xl font-black text-[#2563EB]">ClassPulse</h2>
-        <div class="bg-blue-50 px-4 py-1.5 rounded-full flex items-center gap-2">
-            <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-            <span id="currentTopic" class="text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">Live Lecture</span>
+        /* Header - matches app */
+        .header {
+            background: #FFFFFF;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #E2E8F0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        .logo { font-size: 20px; font-weight: 700; color: #2563EB; letter-spacing: -0.3px; }
+        .live-badge {
+            background: rgba(16,185,129,0.12);
+            padding: 4px 10px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .live-dot {
+            width: 7px; height: 7px;
+            background: #10B981;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .live-text { font-size: 11px; font-weight: 700; color: #10B981; }
+
+        /* Signal buttons - matches app's student session screen */
+        .signals {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px 20px;
+            gap: 12px;
+            padding-bottom: 90px;
+        }
+        .signal-btn {
+            flex: 1;
+            min-height: 100px;
+            background: #FFFFFF;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+        .signal-btn:active { transform: scale(0.97); }
+        .signal-btn[data-signal="got_it"]:active { background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.3); }
+        .signal-btn[data-signal="may_be"]:active { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.3); }
+        .signal-btn[data-signal="not_understood"]:active { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.3); }
+
+        .signal-btn.selected {
+            border-width: 2px;
+        }
+        .signal-btn[data-signal="got_it"].selected { background: rgba(16,185,129,0.06); border-color: #10B981; }
+        .signal-btn[data-signal="may_be"].selected { background: rgba(245,158,11,0.06); border-color: #F59E0B; }
+        .signal-btn[data-signal="not_understood"].selected { background: rgba(239,68,68,0.06); border-color: #EF4444; }
+
+        .signal-icon {
+            width: 52px; height: 52px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            font-size: 26px;
+        }
+        .signal-btn[data-signal="got_it"] .signal-icon { background: rgba(16,185,129,0.1); }
+        .signal-btn[data-signal="may_be"] .signal-icon { background: rgba(245,158,11,0.1); }
+        .signal-btn[data-signal="not_understood"] .signal-icon { background: rgba(239,68,68,0.1); }
+
+        .signal-title {
+            font-size: 17px;
+            font-weight: 800;
+            color: #1E293B;
+            letter-spacing: -0.3px;
+        }
+        .signal-desc {
+            font-size: 12px;
+            color: #94A3B8;
+            font-weight: 500;
+            margin-top: 2px;
+        }
+
+        /* FAB - matches app */
+        .fab {
+            position: absolute;
+            bottom: 24px;
+            right: 20px;
+            background: #2563EB;
+            color: white;
+            border: 3px solid white;
+            border-radius: 50px;
+            padding: 14px 22px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(37,99,235,0.3);
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 10;
+        }
+        .fab:active { transform: scale(0.95); }
+
+        /* Doubt Modal - matches app's doubt sheet */
+        .doubt-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            z-index: 50;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        .doubt-overlay.visible { display: flex; }
+        .doubt-sheet {
+            background: #FFFFFF;
+            width: 100%;
+            max-width: 480px;
+            border-radius: 24px 24px 0 0;
+            padding: 24px;
+        }
+        .doubt-handle {
+            width: 40px; height: 4px;
+            background: #E2E8F0;
+            border-radius: 2px;
+            margin: 0 auto 20px;
+        }
+        .doubt-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1E293B;
+            margin-bottom: 4px;
+        }
+        .doubt-subtitle {
+            font-size: 13px;
+            color: #94A3B8;
+            font-weight: 500;
+            margin-bottom: 20px;
+        }
+        .field-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .field-select, .field-textarea {
+            width: 100%;
+            background: #F1F5F9;
+            border: 1.5px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1E293B;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            margin-bottom: 14px;
+        }
+        .field-select:focus, .field-textarea:focus { border-color: #2563EB; }
+        .field-textarea { resize: none; min-height: 80px; }
+        .doubt-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .doubt-actions button {
+            flex: 1;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: none;
+        }
+        .doubt-actions button:active { transform: scale(0.97); }
+        .btn-cancel { background: transparent; color: #94A3B8; }
+        .btn-send { background: #2563EB; color: white; box-shadow: 0 4px 12px rgba(37,99,235,0.2); }
+
+        /* Quiz modal */
+        .quiz-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(37,99,235,0.95);
+            backdrop-filter: blur(12px);
+            z-index: 60;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+        }
+        .quiz-overlay.visible { display: flex; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <span class="logo">ClassPulse</span>
+        <div class="live-badge">
+            <span class="live-dot"></span>
+            <span id="currentTopic" class="live-text">Live Session</span>
         </div>
     </header>
 
-    <div class="flex-1 flex flex-col p-6 gap-5 pb-24">
-        
-        <button class="signal-btn group bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-green-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="got_it">
-            <div class="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-4 transition-transform group-active:scale-90">
-                <span class="text-4xl">✅</span>
-            </div>
-            <span class="text-2xl font-black text-gray-800 tracking-tight">Got It</span>
-            <p class="text-gray-400 text-sm mt-1">I understand clearly</p>
+    <div class="signals">
+        <button class="signal-btn" data-signal="got_it">
+            <div class="signal-icon">✅</div>
+            <span class="signal-title">Got It</span>
+            <p class="signal-desc">I understand clearly</p>
         </button>
 
-        <button class="signal-btn bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-yellow-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="may_be">
-            <div class="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mb-4">
-                <span class="text-4xl">⚡</span>
-            </div>
-            <span class="text-2xl font-black text-gray-800 tracking-tight">May Be</span>
-            <p class="text-gray-400 text-sm mt-1">Slightly confused</p>
+        <button class="signal-btn" data-signal="may_be">
+            <div class="signal-icon">⚡</div>
+            <span class="signal-title">Sort Of</span>
+            <p class="signal-desc">Slightly confused</p>
         </button>
 
-        <button class="signal-btn bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-red-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="not_understood">
-            <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-4">
-                <span class="text-4xl">🛑</span>
-            </div>
-            <span class="text-2xl font-black text-gray-800 tracking-tight">Not Understood</span>
-            <p class="text-gray-400 text-sm mt-1">I am totally lost</p>
+        <button class="signal-btn" data-signal="not_understood">
+            <div class="signal-icon">🛑</div>
+            <span class="signal-title">Lost</span>
+            <p class="signal-desc">I am totally lost</p>
         </button>
     </div>
 
-    <button id="fabDoubt" class="absolute bottom-8 right-6 bg-[#2563EB] text-white rounded-full px-8 py-5 shadow-2xl active:scale-95 transition-all font-bold flex items-center gap-3 border-4 border-white">
-        <span class="text-xl">✋</span> 
-        <span class="tracking-tight">Ask a Doubt</span>
+    <button id="fabDoubt" class="fab">
+        <span>✋</span>
+        <span>Ask a Doubt</span>
     </button>
 
-    <div id="doubtModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 backdrop-blur-sm">
-        <div class="bg-white w-full max-w-lg rounded-t-[3rem] sm:rounded-[3rem] p-10 shadow-2xl">
-            
-            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8 sm:hidden"></div>
-            
-            <h3 class="text-2xl font-black text-gray-800 mb-2">What's confusing?</h3>
-            <p class="text-gray-400 text-sm mb-8 font-medium">Select the topic and describe your doubt.</p>
-            
-            <div class="space-y-5 mb-10">
-                <div class="relative">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Lecture Concept</label>
-                    <select id="mainTopic" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-[#1E293B] font-bold focus:outline-none focus:border-blue-500 appearance-none transition-all">
-                        <option value="">Choose Main Topic...</option>
-                        </select>
-                    <div class="absolute right-4 bottom-4 pointer-events-none">
-                        <img src="https://img.icons8.com/ios-glyphs/30/64748B/expand-arrow.png" class="w-5 h-5">
-                    </div>
-                </div>
+    <div id="doubtModal" class="doubt-overlay">
+        <div class="doubt-sheet">
+            <div class="doubt-handle"></div>
+            <h3 class="doubt-title">What's confusing?</h3>
+            <p class="doubt-subtitle">Select the topic and describe your doubt.</p>
 
-                <div id="subTopicWrapper" class="hidden relative">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Specific Detail</label>
-                    <select id="subTopic" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-[#1E293B] font-bold focus:outline-none focus:border-blue-500 appearance-none transition-all">
-                        <option value="">Select Sub-topic...</option>
-                    </select>
-                    <div class="absolute right-4 bottom-4 pointer-events-none">
-                        <img src="https://img.icons8.com/ios-glyphs/30/64748B/expand-arrow.png" class="w-5 h-5">
-                    </div>
-                </div>
+            <div class="field-label">Lecture Concept</div>
+            <select id="mainTopic" class="field-select">
+                <option value="">Choose Main Topic...</option>
+            </select>
 
-                <div>
-                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Your Question</label>
-                    <textarea id="doubtText" rows="3" placeholder="Type your doubt here..." class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-5 text-gray-700 focus:outline-none focus:border-blue-500 resize-none font-medium transition-all placeholder:text-gray-300"></textarea>
-                </div>
+            <div id="subTopicWrapper" style="display:none;">
+                <div class="field-label">Specific Detail</div>
+                <select id="subTopic" class="field-select">
+                    <option value="">Select Sub-topic...</option>
+                </select>
             </div>
 
-            <div class="flex gap-4">
-                <button id="cancelDoubt" class="flex-1 py-4 font-bold text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
-                <button id="submitDoubt" class="flex-1 bg-[#2563EB] text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-100 active:scale-95 transition-all text-lg">Send Doubt</button>
+            <div class="field-label">Your Question</div>
+            <textarea id="doubtText" class="field-textarea" rows="3" placeholder="Type your doubt here..."></textarea>
+
+            <div class="doubt-actions">
+                <button id="cancelDoubt" class="btn-cancel">Cancel</button>
+                <button id="submitDoubt" class="btn-send">Send Doubt</button>
             </div>
         </div>
     </div>
 
-    <div id="quizModal" class="hidden fixed inset-0 bg-[#2563EB]/95 z-[60] flex flex-col items-center justify-center p-8 backdrop-blur-md">
-        <p class="text-blue-100 text-xs font-bold uppercase tracking-widest mb-2">Live Quiz</p>
-        <h2 id="quizQuestion" class="text-2xl font-black text-white text-center mb-10 leading-tight">Loading...</h2>
-        <div id="quizOptions" class="w-full max-w-sm space-y-4">
-            </div>
+    <div id="quizModal" class="quiz-overlay">
+        <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">Live Quiz</p>
+        <h2 id="quizQuestion" style="font-size:22px;font-weight:800;color:white;text-align:center;margin-bottom:32px;line-height:1.4;">Loading...</h2>
+        <div id="quizOptions" style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;"></div>
     </div>
 
     <script src="js/api.js"></script>
