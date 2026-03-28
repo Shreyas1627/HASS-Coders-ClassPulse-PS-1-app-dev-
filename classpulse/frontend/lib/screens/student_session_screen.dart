@@ -45,15 +45,54 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
     final data = await ApiService.pollDashboard(code);
     if (data != null && mounted) {
       final apiQuestions = data['questions'] as List<dynamic>? ?? [];
+      
+      final oldQuestions = {for (var q in _questions) q['id']: q};
+
       setState(() {
-        _questions = apiQuestions.map((q) => <String, dynamic>{
-          'text': (q['translated_text'] ?? q['original_text'] ?? '') as String,
-          'upvotes': (q['upvotes'] ?? 0) as int,
-          'upvoted': false,
-          'id': q['id']?.toString(),
+        _questions = apiQuestions.map((q) {
+          final qId = q['id']?.toString();
+          final qText = (q['translated_text'] ?? q['original_text'] ?? '') as String;
+          final aiResponse = q['ai_response'] as String?;
+          final oldQ = oldQuestions[qId];
+
+          // Trigger popup if AI response was just added
+          if (oldQ != null && oldQ['ai_response'] == null && aiResponse != null && aiResponse.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showNewAnswerNotification(qText);
+            });
+          }
+
+          return <String, dynamic>{
+            'text': qText,
+            'upvotes': (q['upvotes'] ?? 0) as int,
+            'upvoted': oldQ?['upvoted'] ?? false,
+            'id': qId,
+            'ai_response': aiResponse,
+          };
         }).toList();
       });
     }
+  }
+
+  void _showNewAnswerNotification(String question) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('✨ Teacher sent an answer!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            const SizedBox(height: 4),
+            Text('Q: $question', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          ],
+        ),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   void _toggleUpvote(int index) async {
@@ -905,12 +944,15 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 14),
-                      child: Row(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              q['text'] as String,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  q['text'] as String,
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
@@ -969,8 +1011,42 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
                           ),
                         ],
                       ),
+                      if (q['ai_response'] != null && (q['ai_response'] as String).isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.amber.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.amber.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.amber),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  q['ai_response'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                     ],
                     ),
-                    const Divider(
+                   ),
+                   const Divider(
                         height: 1,
                         indent: 20,
                         endIndent: 20,

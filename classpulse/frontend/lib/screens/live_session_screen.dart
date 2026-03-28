@@ -1727,7 +1727,7 @@ class _AIAnswerSheetState extends State<_AIAnswerSheet> {
       return;
     }
 
-    final result = await ApiService.answerDoubt(questionId: widget.questionId!);
+    final result = await ApiService.generateAiAnswer(widget.questionId!);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -1876,27 +1876,67 @@ class _AIAnswerSheetState extends State<_AIAnswerSheet> {
               ),
             ),
           const SizedBox(height: 14),
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(10),
+          if (!_isLoading && !_hasError && _answer != null)
+            GestureDetector(
+              onTap: () async {
+                HapticFeedback.lightImpact();
+                await ApiService.answerDoubt(
+                  questionId: widget.questionId!,
+                  answerText: _answer,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Answer sent to students! 🚀', style: TextStyle(color: Colors.white)),
+                      backgroundColor: AppColors.primary,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                  Navigator.pop(context);
+                }
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Send to Students',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               ),
-              child: const Center(
-                child: Text(
-                  'Got it',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
+            )
+          else
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Close',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
       ),

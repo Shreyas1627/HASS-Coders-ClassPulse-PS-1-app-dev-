@@ -313,4 +313,17 @@ class ApiService {
     } catch (_) {}
     return null;
   }
+
+  /// Preview AI answer without saving
+  static Future<Map<String, dynamic>?> generateAiAnswer(String questionId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/teacher/doubt/generate'),
+        headers: _headers,
+        body: jsonEncode({'question_id': questionId}),
+      ).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
 }

@@ -214,6 +214,20 @@ async def mark_question_addressed(req: QuestionAddressedReq):
     supabase.table("questions").update({"is_addressed": req.is_addressed}).eq("id", req.question_id).execute()
     return {"status": "success", "is_addressed": req.is_addressed}
 
+# --- Generate AI Answer (Preview only) ---
+@router.post("/doubt/generate")
+async def generate_doubt_answer(req: DoubtAnswerReq):
+    from ai_engine.assistant import generate_ai_answer
+    try:
+        res = supabase.table("questions").select("*").eq("id", req.question_id).execute()
+        if not res.data:
+            return {"error": "Question not found"}
+        question_data = res.data[0]
+        final_answer = generate_ai_answer(question_data.get("translated_text", "Explain this."), "Computer Science")
+        return {"status": "success", "answer": final_answer}
+    except Exception as e:
+        return {"error": str(e)}
+
 # --- Answer Doubt (AI or teacher) ---
 @router.post("/doubt/answer")
 async def answer_doubt(req: DoubtAnswerReq):
