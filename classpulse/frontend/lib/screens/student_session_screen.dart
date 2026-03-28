@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
@@ -16,6 +17,14 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
   String? _selectedSignal; // 'understood', 'maybe', 'not_understood'
   bool _signalSent = false;
   final _doubtController = TextEditingController();
+
+  // ── Cooldown state ──────────────────────────────────────────────────
+  static const int _cooldownDuration = 30; // seconds
+  Timer? _cooldownTimer;
+  int _cooldownRemaining = 0;
+  bool _isCooldownActive = false;
+  bool _hasUsedChange = false; // true after student uses their one-time change
+  bool _isChanging = false; // true while picking a new signal after "Change"
 
   // Mock questions from other students
   final List<Map<String, dynamic>> _questions = [
@@ -45,11 +54,35 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
 
   @override
   void dispose() {
+    _cooldownTimer?.cancel();
     _doubtController.dispose();
     super.dispose();
   }
 
+  // ── Cooldown helpers ────────────────────────────────────────────────
+
+  void _startCooldown() {
+    _cooldownTimer?.cancel();
+    _cooldownRemaining = _cooldownDuration;
+    _isCooldownActive = true;
+    _isChanging = false;
+
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _cooldownRemaining--;
+        if (_cooldownRemaining <= 0) {
+          _isCooldownActive = false;
+          _hasUsedChange = false; // reset change allowance for next round
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  bool get _buttonsDisabled => _isCooldownActive && !_isChanging;
+
   void _sendSignal(String signal) {
+    if (_buttonsDisabled) return; // ignore taps during cooldown
     HapticFeedback.mediumImpact();
 
     if (signal == 'understood') {
@@ -57,6 +90,7 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
         _selectedSignal = signal;
         _signalSent = true;
       });
+      _startCooldown();
       _showConfirmation('✅ Response sent!', AppColors.success);
     } else {
       // Open doubt input sheet for "maybe" and "not_understood"
@@ -101,6 +135,7 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
               _selectedSignal = signal;
               _signalSent = true;
             });
+            _startCooldown();
             final hasDoubt = _doubtController.text.trim().isNotEmpty;
             _showConfirmation(
               hasDoubt ? 'Doubt sent! 📝' : 'Response sent!',
@@ -154,10 +189,12 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
                   _buildHeader(),
                   _buildSessionInfo(),
                   _buildTopicTracker(),
-                  const Spacer(),
-                  _buildSignalButtons(),
+                  const SizedBox(height: 8),
+                  Expanded(child: _buildSignalButtons()),
+                  if (_isChanging && _isCooldownActive)
+                    _buildChangingPrompt(),
                   if (_signalSent) _buildSignalConfirmation(),
-                  const Spacer(),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -390,26 +427,32 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 20),
-          _buildSignalButton(
-            signal: 'understood',
-            label: 'Understood',
-            icon: Icons.check_circle_rounded,
-            color: AppColors.success,
+          const SizedBox(height: 16),
+          Expanded(
+            child: _buildSignalButton(
+              signal: 'understood',
+              label: 'Got it',
+              icon: Icons.check_circle_rounded,
+              color: AppColors.success,
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildSignalButton(
-            signal: 'maybe',
-            label: 'Maybe',
-            icon: Icons.help_rounded,
-            color: AppColors.amber,
+          const SizedBox(height: 10),
+          Expanded(
+            child: _buildSignalButton(
+              signal: 'maybe',
+              label: 'Sort of',
+              icon: Icons.help_rounded,
+              color: AppColors.amber,
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildSignalButton(
-            signal: 'not_understood',
-            label: 'Not Understood',
-            icon: Icons.cancel_rounded,
-            color: AppColors.warning,
+          const SizedBox(height: 10),
+          Expanded(
+            child: _buildSignalButton(
+              signal: 'not_understood',
+              label: 'Lost',
+              icon: Icons.cancel_rounded,
+              color: AppColors.warning,
+            ),
           ),
         ],
       ),
@@ -423,66 +466,119 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
     required Color color,
   }) {
     final isSelected = _selectedSignal == signal;
+    final isDisabled = _buttonsDisabled;
+    final displayColor = isDisabled && !isSelected
+        ? color.withValues(alpha: 0.35)
+        : color;
 
     return GestureDetector(
-      onTap: () => _sendSignal(signal),
+      onTap: isDisabled ? null : () => _sendSignal(signal),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 22),
-        decoration: BoxDecoration(
-          color: isSelected ? color : AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? color : color.withValues(alpha: 0.3),
-            width: isSelected ? 2 : 1.5,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.2),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : const [
-                  BoxShadow(
-                    color: AppColors.cardShadow,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 22, color: isSelected ? Colors.white : color),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : color,
-              ),
+          duration: const Duration(milliseconds: 250),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 22),
+          decoration: BoxDecoration(
+            color: displayColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.white.withValues(alpha: 0.4)
+                  : displayColor,
+              width: isSelected ? 3 : 1.5,
             ),
-            if (signal != 'understood') ...[
-              const SizedBox(width: 6),
-              Icon(
-                Icons.edit_note_rounded,
-                size: 16,
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.7)
-                    : color.withValues(alpha: 0.5),
+            boxShadow: [
+              BoxShadow(
+                color: displayColor.withValues(
+                    alpha: isSelected ? 0.5 : (isDisabled ? 0.15 : 0.35)),
+                blurRadius: isSelected ? 16 : 8,
+                offset: const Offset(0, 4),
               ),
             ],
-          ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 24, color: Colors.white),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(
+                      alpha: isDisabled && !isSelected ? 0.6 : 1.0),
+                ),
+              ),
+              if (signal != 'understood' && !isDisabled) ...[
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.edit_note_rounded,
+                  size: 16,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ],
+              if (isSelected) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.check_rounded,
+                  size: 18,
+                  color: Colors.white.withValues(alpha: 0.9),
+                ),
+              ],
+            ],
+          ),
         ),
+    );
+  }
+
+  // ── Changing prompt (shown while student picks new signal) ────────────
+
+  Widget _buildChangingPrompt() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.15), width: 1),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.swap_horiz_rounded,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Pick your new response',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${_cooldownRemaining}s',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // ── Signal confirmation ────────────────────────────────────────────────
+
 
   Widget _buildSignalConfirmation() {
     Color color;
@@ -492,63 +588,154 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
     switch (_selectedSignal) {
       case 'understood':
         color = AppColors.success;
-        label = 'You responded: Understood';
+        label = 'You responded: Got it';
         icon = Icons.check_circle_rounded;
         break;
       case 'maybe':
         color = AppColors.amber;
-        label = 'You responded: Maybe';
+        label = 'You responded: Sort of';
         icon = Icons.help_rounded;
         break;
       default:
         color = AppColors.warning;
-        label = 'You responded: Not Understood';
+        label = 'You responded: Lost';
         icon = Icons.cancel_rounded;
     }
 
+    final canChange = _isCooldownActive && !_hasUsedChange && !_isChanging;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Column(
+        children: [
+          // Signal confirmation bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              border:
+                  Border.all(color: color.withValues(alpha: 0.2), width: 1),
             ),
-            const Spacer(),
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                setState(() {
-                  _selectedSignal = null;
-                  _signalSent = false;
-                });
-              },
-              child: Text(
-                'Change',
-                style: TextStyle(
-                  fontSize: 12,
+            child: Row(
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: color,
+                    ),
+                  ),
+                ),
+                if (canChange)
+                  GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      setState(() {
+                        _hasUsedChange = true;
+                        _isChanging = true;
+                        _selectedSignal = null;
+                        _signalSent = false;
+                        // keep timer running – it will restart on new pick
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Change',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Cooldown progress bar
+          if (_isCooldownActive) _buildCooldownBar(color),
+        ],
+      ),
+    );
+  }
+
+  // ── Cooldown progress bar with timer ─────────────────────────────────
+
+  Widget _buildCooldownBar(Color accentColor) {
+    final progress = _cooldownRemaining / _cooldownDuration;
+    final changeLabel =
+        _hasUsedChange ? 'Change used' : 'You can change once';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider, width: 1),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.timer_rounded,
+                size: 14,
+                color: AppColors.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Next response in ${_cooldownRemaining}s',
+                style: const TextStyle(
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: color,
-                  decoration: TextDecoration.underline,
-                  decorationColor: color,
+                  color: AppColors.textSecondary,
                 ),
               ),
+              const Spacer(),
+              Icon(
+                _hasUsedChange
+                    ? Icons.block_rounded
+                    : Icons.swap_horiz_rounded,
+                size: 12,
+                color: AppColors.textMuted,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                changeLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: _hasUsedChange
+                      ? AppColors.textMuted
+                      : accentColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 4,
+              backgroundColor: AppColors.divider,
+              valueColor: AlwaysStoppedAnimation<Color>(accentColor),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

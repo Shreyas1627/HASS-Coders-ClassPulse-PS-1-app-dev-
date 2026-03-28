@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../data/mock_data.dart';
+import '../session_summary_screen.dart';
 
 /// Three-level drill-down: Classes → Subjects → Session History
 class HistoryTab extends StatefulWidget {
@@ -446,7 +447,7 @@ class _HistoryTabState extends State<HistoryTab> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            '${session.attended}/${session.total} Students',
+                            '${session.attended}/${session.total}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -461,6 +462,48 @@ class _HistoryTabState extends State<HistoryTab> {
                       ),
                     ),
                     const Spacer(),
+
+                    // Show Summary button
+                    GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                SessionSummaryScreen.fromPastSession(
+                              session: session,
+                              className: _selectedClass!,
+                              subject: _selectedSubject!,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.assessment_rounded,
+                                size: 14, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text(
+                              'Summary',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
 
                     // Download Report button
                     GestureDetector(
@@ -489,22 +532,8 @@ class _HistoryTabState extends State<HistoryTab> {
                           border: Border.all(
                               color: AppColors.primary, width: 1.5),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.download_rounded,
-                                size: 14, color: AppColors.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Download Report',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: const Icon(Icons.download_rounded,
+                            size: 14, color: AppColors.primary),
                       ),
                     ),
                   ],

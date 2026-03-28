@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
+import 'session_summary_screen.dart';
 
 /// Redesigned live session — teacher cockpit view
 class LiveSessionScreen extends StatefulWidget {
@@ -35,6 +37,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   // Question queue state
   late List<StudentQuestion> _questions;
 
+  // Session duration tracking
+  final DateTime _sessionStartTime = DateTime.now();
+
+  // Text-to-speech
+  final FlutterTts _flutterTts = FlutterTts();
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +71,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
+
+    // Initialize TTS
+    _flutterTts.setLanguage('en-US');
+    _flutterTts.setSpeechRate(0.45);
+    _flutterTts.setPitch(1.0);
   }
 
   @override
@@ -70,6 +83,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     _signalTimer?.cancel();
     _pulseController.dispose();
     _pieAnimController.dispose();
+    _flutterTts.stop();
     super.dispose();
   }
 
@@ -140,6 +154,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
   bool get _isLowUnderstanding => _understandingScore <= 40;
 
+  String get _sessionDuration {
+    final elapsed = DateTime.now().difference(_sessionStartTime);
+    if (elapsed.inHours > 0) {
+      return '${elapsed.inHours}h ${elapsed.inMinutes % 60}m';
+    }
+    return '${elapsed.inMinutes} min';
+  }
+
   // ── Actions ────────────────────────────────────────────────────────────
   void _endSession() {
     HapticFeedback.heavyImpact();
@@ -169,8 +191,26 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
+              Navigator.pop(ctx); // Close dialog
+              // Navigate to summary, replacing live session
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SessionSummaryScreen(
+                    className: widget.session.className,
+                    subject: widget.session.subject,
+                    topic: widget.session.topic,
+                    duration: _sessionDuration,
+                    totalStudents: _total,
+                    gotItCount: _gotItCount,
+                    sortOfCount: _sortOfCount,
+                    lostCount: _lostCount,
+                    questionsAsked: _questions.length,
+                    questionsAddressed:
+                        _questions.where((q) => q.isAddressed).length,
+                  ),
+                ),
+              );
             },
             style: TextButton.styleFrom(
               backgroundColor: AppColors.warning.withValues(alpha: 0.1),
@@ -558,7 +598,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             Expanded(
               child: _buildCategoryBox(
                 title: 'Sort of',
-                subtitle: 'Maybe',
+                subtitle: 'Uncertain',
                 count: _sortOfCount,
                 pct: _sortOfPct,
                 color: AppColors.amber,
@@ -891,7 +931,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           ),
         ],
       ),
-      child: Column(
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
         children: [
           const Text(
             'Understanding',
@@ -974,7 +1016,54 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           _pieLegend(AppColors.warning, 'Lost', _lostCount),
           const SizedBox(height: 6),
           _pieLegend(AppColors.textMuted, 'No vote', _noVoteCount),
+          const SizedBox(height: 16),
+          // Quick Actions legend
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _actionLegendRow(
+                  Icons.check_circle_outline_rounded,
+                  AppColors.success,
+                  'Acknowledge',
+                ),
+                const SizedBox(height: 6),
+                _actionLegendRow(
+                  Icons.close_rounded,
+                  AppColors.warning,
+                  'Dismiss',
+                ),
+                const SizedBox(height: 6),
+                _actionLegendRow(
+                  Icons.record_voice_over_rounded,
+                  AppColors.primary,
+                  'Read Aloud',
+                ),
+                const SizedBox(height: 6),
+                _actionLegendRow(
+                  Icons.auto_awesome_rounded,
+                  AppColors.amber,
+                  'AI Answer',
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
       ),
     );
   }
@@ -1007,6 +1096,25 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             fontSize: 12,
             fontWeight: FontWeight.w800,
             color: c,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionLegendRow(IconData icon, Color color, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
           ),
         ),
       ],
@@ -1168,10 +1276,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 6),
-          // Bottom row: upvotes + time + addressed toggle
+          // Info row: upvotes + time
           Row(
             children: [
-              // Upvotes
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 6,
@@ -1210,59 +1317,227 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const Spacer(),
-              // Mark as addressed toggle
-              GestureDetector(
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Action icons row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _buildActionChip(
+                icon: isAddressed
+                    ? Icons.check_circle_rounded
+                    : Icons.check_circle_outline_rounded,
+                label: 'Acknowledge',
+                color: AppColors.success,
+                filled: isAddressed,
                 onTap: () => _markQuestionAddressed(index),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isAddressed
-                        ? AppColors.success.withValues(alpha: 0.12)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: isAddressed
-                          ? AppColors.success.withValues(alpha: 0.3)
-                          : AppColors.divider,
-                      width: 1,
+              ),
+              const SizedBox(width: 4),
+              _buildActionChip(
+                icon: Icons.close_rounded,
+                label: 'Dismiss',
+                color: AppColors.warning,
+                filled: false,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _questions.removeAt(index);
+                  });
+                },
+              ),
+              const SizedBox(width: 4),
+              _buildActionChip(
+                icon: Icons.record_voice_over_rounded,
+                label: 'Read',
+                color: AppColors.primary,
+                filled: false,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _flutterTts.speak(q.text);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('🔊 "${q.text.length > 40 ? '${q.text.substring(0, 40)}...' : q.text}"',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500)),
+                      backgroundColor: AppColors.primary,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      duration: const Duration(seconds: 2),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isAddressed
-                            ? Icons.check_circle_rounded
-                            : Icons.circle_outlined,
-                        size: 12,
-                        color: isAddressed
-                            ? AppColors.success
-                            : AppColors.textMuted,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        isAddressed ? 'Done' : 'Mark',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: isAddressed
-                              ? AppColors.success
-                              : AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                  );
+                },
+              ),
+              const SizedBox(width: 4),
+              _buildActionChip(
+                icon: Icons.auto_awesome_rounded,
+                label: 'AI',
+                color: AppColors.amber,
+                filled: false,
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _showAIAnswer(q.text);
+                },
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildActionChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool filled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: filled
+              ? color.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: filled
+                ? color.withValues(alpha: 0.3)
+                : AppColors.divider,
+            width: 1,
+          ),
+        ),
+        child: Center(
+          child: Icon(icon, size: 14, color: filled ? color : color.withValues(alpha: 0.7)),
+        ),
+      ),
+    );
+  }
+
+  void _showAIAnswer(String questionText) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppColors.amber.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.auto_awesome_rounded,
+                        size: 18, color: AppColors.amber),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'AI-Generated Answer',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '"$questionText"',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.amber.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.amber.withValues(alpha: 0.15),
+                    width: 1,
+                  ),
+                ),
+                child: const Text(
+                  'This is a great question! The concept relates to the fundamental principles we covered earlier. '
+                  'In simple terms, the key difference lies in how the underlying mechanism works — '
+                  'one follows a direct approach while the other uses an indirect method. '
+                  'I would recommend reviewing the examples from slides 12-15 for a clearer understanding.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'Got it',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: MediaQuery.of(ctx).padding.bottom + 8),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1371,8 +1646,8 @@ class _PieChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2;
-    const strokeWidth = 16.0;
-    const gapAngle = 0.04;
+    const strokeWidth = 20.0;
+    const gapAngle = 0.06;
 
     final rect = Rect.fromCircle(
       center: center,
@@ -1380,22 +1655,29 @@ class _PieChartPainter extends CustomPainter {
     );
 
     final segments = <_PieSegment>[
-      _PieSegment(gotItPct, const Color(0xFF10B981)),
-      _PieSegment(sortOfPct, const Color(0xFFF59E0B)),
-      _PieSegment(lostPct, const Color(0xFFEF4444)),
-      _PieSegment(noVotePct, const Color(0xFFCBD5E1)),
+      _PieSegment(gotItPct, const Color(0xFF10B981), const Color(0xFF34D399)),
+      _PieSegment(sortOfPct, const Color(0xFFF59E0B), const Color(0xFFFBBF24)),
+      _PieSegment(lostPct, const Color(0xFFEF4444), const Color(0xFFF87171)),
+      _PieSegment(noVotePct, const Color(0xFFCBD5E1), const Color(0xFFE2E8F0)),
     ];
 
     final nonZeroSegments = segments.where((s) => s.fraction > 0).length;
     final totalGap = nonZeroSegments > 1 ? gapAngle * nonZeroSegments : 0.0;
     final availableSweep = 2 * math.pi - totalGap;
 
-    // Background circle
+    // Background track
     final bgPaint = Paint()
       ..color = const Color(0xFFF1F5F9)
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth;
     canvas.drawCircle(center, radius - strokeWidth / 2, bgPaint);
+
+    // Inner subtle shadow ring
+    final innerShadow = Paint()
+      ..color = const Color(0x0A000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth + 2;
+    canvas.drawCircle(center, radius - strokeWidth / 2, innerShadow);
 
     // Draw segments
     double startAngle = -math.pi / 2;
@@ -1404,13 +1686,28 @@ class _PieChartPainter extends CustomPainter {
       if (seg.fraction <= 0) continue;
 
       final sweep = seg.fraction * availableSweep;
-      final paint = Paint()
+      
+      // Gradient-like effect: draw two arcs - outer darker, inner lighter
+      final paintOuter = Paint()
         ..color = seg.color
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round;
 
-      canvas.drawArc(rect, startAngle, sweep, false, paint);
+      canvas.drawArc(rect, startAngle, sweep, false, paintOuter);
+
+      // Highlight stripe on the inner edge for depth
+      final highlightRect = Rect.fromCircle(
+        center: center,
+        radius: radius - strokeWidth * 0.75,
+      );
+      final paintHighlight = Paint()
+        ..color = seg.lightColor.withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth * 0.3
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(highlightRect, startAngle, sweep, false, paintHighlight);
+
       startAngle += sweep + (nonZeroSegments > 1 ? gapAngle : 0);
     }
   }
@@ -1426,5 +1723,6 @@ class _PieChartPainter extends CustomPainter {
 class _PieSegment {
   final double fraction;
   final Color color;
-  const _PieSegment(this.fraction, this.color);
+  final Color lightColor;
+  const _PieSegment(this.fraction, this.color, this.lightColor);
 }

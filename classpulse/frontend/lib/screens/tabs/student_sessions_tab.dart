@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../data/mock_data.dart';
+import '../session_summary_screen.dart';
 
 class StudentSessionsTab extends StatelessWidget {
   const StudentSessionsTab({super.key});
@@ -61,7 +63,7 @@ class StudentSessionsTab extends StatelessWidget {
           child: Row(
             children: [
               _buildStatChip(
-                'Understood',
+                'Got it',
                 studentPastSessions
                     .where((s) => s.signal == 'understood')
                     .length,
@@ -69,13 +71,13 @@ class StudentSessionsTab extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _buildStatChip(
-                'Maybe',
+                'Sort of',
                 studentPastSessions.where((s) => s.signal == 'maybe').length,
                 AppColors.amber,
               ),
               const SizedBox(width: 8),
               _buildStatChip(
-                'Not Understood',
+                'Lost',
                 studentPastSessions
                     .where((s) => s.signal == 'not_understood')
                     .length,
@@ -95,7 +97,7 @@ class StudentSessionsTab extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, index) {
               final session = studentPastSessions[index];
-              return _buildSessionCard(session);
+              return _buildSessionCard(context, session);
             },
           ),
         ),
@@ -136,7 +138,7 @@ class StudentSessionsTab extends StatelessWidget {
     );
   }
 
-  Widget _buildSessionCard(StudentPastSession session) {
+  Widget _buildSessionCard(BuildContext context, StudentPastSession session) {
     Color signalColor;
     IconData signalIcon;
     String signalLabel;
@@ -145,17 +147,17 @@ class StudentSessionsTab extends StatelessWidget {
       case 'understood':
         signalColor = AppColors.success;
         signalIcon = Icons.check_circle_rounded;
-        signalLabel = 'Understood';
+        signalLabel = 'Got it';
         break;
       case 'maybe':
         signalColor = AppColors.amber;
         signalIcon = Icons.help_rounded;
-        signalLabel = 'Maybe';
+        signalLabel = 'Sort of';
         break;
       default:
         signalColor = AppColors.warning;
         signalIcon = Icons.cancel_rounded;
-        signalLabel = 'Not Understood';
+        signalLabel = 'Lost';
     }
 
     return Container(
@@ -251,6 +253,45 @@ class StudentSessionsTab extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const Spacer(),
+              // View Summary button
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          SessionSummaryScreen.fromStudentSession(
+                        session: session,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.assessment_rounded,
+                          size: 13, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Summary',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
