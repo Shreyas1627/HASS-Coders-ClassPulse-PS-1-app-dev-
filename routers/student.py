@@ -44,9 +44,9 @@ async def submit_signal(req: SignalReq):
         "updated_at": "now()"
     }
     
-    # If you are using milestones, include it. If not, ignore it for now.
-    if hasattr(req, 'milestone_id') and req.milestone_id:
-        data["milestone_id"] = req.milestone_id
+    # # If you are using milestones, include it. If not, ignore it for now.
+    # if hasattr(req, 'milestone_id') and req.milestone_id:
+    #     data["milestone_id"] = req.milestone_id
 
     supabase.table("signals").upsert(data, on_conflict="session_code, student_uuid").execute()
     
@@ -81,3 +81,8 @@ async def submit_doubt(req: DoubtReq):
         return {"status": "success", "message": "Doubt submitted."}
         
     return {"status": "success", "message": "Doubt submitted to teacher."}
+
+@router.get("/poll/status/{session_code}")
+async def check_poll_status(session_code: str):
+    """Dummy endpoint to stop the frontend from throwing 404 errors."""
+    return {"status": "none", "active_poll": False}

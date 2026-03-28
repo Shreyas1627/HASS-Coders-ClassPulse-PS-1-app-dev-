@@ -1,26 +1,34 @@
 import google.generativeai as genai
 import requests
+import os
 from core.config import settings
+from groq import Groq
 
-# Configure Gemini
-genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Initialize Groq Client
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Using Llama 3 8B for lightning-fast latency
+MODEL_NAME = "llama3-8b-8192"
 
 def verify_and_classify_doubt(text: str) -> dict:
-    """Uses Gemini to check if a doubt is spam/joke or valid."""
+    """Uses Groq Llama 3 to check if a doubt is spam/joke."""
     prompt = f"""
     You are a strict classroom assistant. Read this student's doubt.
-    If it is a joke, gibberish, abusive, or highly irrelevant, reply ONLY with 'SPAM'.
-    If it is a genuine academic question, reply ONLY with 'VALID'.
+    If it is a joke, gibberish, abusive, or highly irrelevant, reply ONLY with the exact word 'SPAM'.
+    If it is a genuine academic question, reply ONLY with the exact word 'VALID'.
     Student Doubt: "{text}"
     """
     try:
-        response = model.generate_content(prompt)
-        result = response.text.strip().upper()
-        return {"is_spam": result == "SPAM"}
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=10,
+        )
+        result = completion.choices[0].message.content.strip().upper()
+        return {"is_spam": "SPAM" in result}
     except Exception as e:
-        print(f"Gemini Error: {e}")
-        return {"is_spam": False} # Default to letting it through if AI fails
+        print(f"Groq Error: {e}")
+        return {"is_spam": False}
 
 def generate_ai_answer(question_text: str, subject: str) -> str:
     """Generates an explanation on behalf of the teacher."""
@@ -30,10 +38,15 @@ def generate_ai_answer(question_text: str, subject: str) -> str:
     Provide a clear, encouraging, and concise answer (under 3 sentences).
     """
     try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=150,
+        )
+        return completion.choices[0].message.content.strip()
     except Exception as e:
-        return "I'm having trouble analyzing this right now. Please ask the teacher directly!"
+        return "I'm having trouble analyzing this right now. Please ask the teacher!"
 
 def translate_indic_to_english(text: str) -> str:
     """Uses Sarvam AI to translate Hinglish/Hindi to clean English."""

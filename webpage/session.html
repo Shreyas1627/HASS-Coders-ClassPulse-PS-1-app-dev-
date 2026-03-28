@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ClassPulse Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#F8FAFC] text-[#1E293B] h-screen flex flex-col overflow-hidden relative font-sans select-none">
+
+    <header class="bg-white p-5 shadow-sm flex items-center justify-between border-b border-gray-100">
+        <h2 class="text-xl font-black text-[#2563EB]">ClassPulse</h2>
+        <div class="bg-blue-50 px-4 py-1.5 rounded-full flex items-center gap-2">
+            <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+            <span id="currentTopic" class="text-[10px] font-bold text-[#2563EB] uppercase tracking-widest">Live Lecture</span>
+        </div>
+    </header>
+
+    <div class="flex-1 flex flex-col p-6 gap-5 pb-24">
+        
+        <button class="signal-btn group bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-green-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="got_it">
+            <div class="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-4 transition-transform group-active:scale-90">
+                <span class="text-4xl">✅</span>
+            </div>
+            <span class="text-2xl font-black text-gray-800 tracking-tight">Got It</span>
+            <p class="text-gray-400 text-sm mt-1">I understand clearly</p>
+        </button>
+
+        <button class="signal-btn bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-yellow-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="may_be">
+            <div class="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mb-4">
+                <span class="text-4xl">⚡</span>
+            </div>
+            <span class="text-2xl font-black text-gray-800 tracking-tight">May Be</span>
+            <p class="text-gray-400 text-sm mt-1">Slightly confused</p>
+        </button>
+
+        <button class="signal-btn bg-white border border-gray-200 rounded-[2.5rem] flex-1 shadow-sm active:shadow-inner active:bg-red-50 transition-all flex flex-col items-center justify-center text-center p-4" data-signal="not_understood">
+            <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                <span class="text-4xl">🛑</span>
+            </div>
+            <span class="text-2xl font-black text-gray-800 tracking-tight">Not Understood</span>
+            <p class="text-gray-400 text-sm mt-1">I am totally lost</p>
+        </button>
+    </div>
+
+    <button id="fabDoubt" class="absolute bottom-8 right-6 bg-[#2563EB] text-white rounded-full px-8 py-5 shadow-2xl active:scale-95 transition-all font-bold flex items-center gap-3 border-4 border-white">
+        <span class="text-xl">✋</span> 
+        <span class="tracking-tight">Ask a Doubt</span>
+    </button>
+
+    <div id="doubtModal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-lg rounded-t-[3rem] sm:rounded-[3rem] p-10 shadow-2xl">
+            
+            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-8 sm:hidden"></div>
+            
+            <h3 class="text-2xl font-black text-gray-800 mb-2">What's confusing?</h3>
+            <p class="text-gray-400 text-sm mb-8 font-medium">Select the topic and describe your doubt.</p>
+            
+            <div class="space-y-5 mb-10">
+                <div class="relative">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Lecture Concept</label>
+                    <select id="mainTopic" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-[#1E293B] font-bold focus:outline-none focus:border-blue-500 appearance-none transition-all">
+                        <option value="">Choose Main Topic...</option>
+                        </select>
+                    <div class="absolute right-4 bottom-4 pointer-events-none">
+                        <img src="https://img.icons8.com/ios-glyphs/30/64748B/expand-arrow.png" class="w-5 h-5">
+                    </div>
+                </div>
+
+                <div id="subTopicWrapper" class="hidden relative">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Specific Detail</label>
+                    <select id="subTopic" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-4 text-[#1E293B] font-bold focus:outline-none focus:border-blue-500 appearance-none transition-all">
+                        <option value="">Select Sub-topic...</option>
+                    </select>
+                    <div class="absolute right-4 bottom-4 pointer-events-none">
+                        <img src="https://img.icons8.com/ios-glyphs/30/64748B/expand-arrow.png" class="w-5 h-5">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-2 block">Your Question</label>
+                    <textarea id="doubtText" rows="3" placeholder="Type your doubt here..." class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl p-5 text-gray-700 focus:outline-none focus:border-blue-500 resize-none font-medium transition-all placeholder:text-gray-300"></textarea>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <button id="cancelDoubt" class="flex-1 py-4 font-bold text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
+                <button id="submitDoubt" class="flex-1 bg-[#2563EB] text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-100 active:scale-95 transition-all text-lg">Send Doubt</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="quizModal" class="hidden fixed inset-0 bg-[#2563EB]/95 z-[60] flex flex-col items-center justify-center p-8 backdrop-blur-md">
+        <p class="text-blue-100 text-xs font-bold uppercase tracking-widest mb-2">Live Quiz</p>
+        <h2 id="quizQuestion" class="text-2xl font-black text-white text-center mb-10 leading-tight">Loading...</h2>
+        <div id="quizOptions" class="w-full max-w-sm space-y-4">
+            </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/ui.js"></script>
+</body>
+</html>

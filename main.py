@@ -3,8 +3,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from routers import teacher
+from routers import teacher, student
 import uuid
+from fastapi.responses import RedirectResponse
 
 app = FastAPI(title="SyncClass Core")
 
@@ -19,13 +20,14 @@ app.add_middleware(
 
 # 2. MOUNT HARSH'S WEBPAGE (Crucial for Offline Fallback)
 # Create a folder called 'webpage' in your root directory. Harsh will put his HTML/JS here.
-import os
-if not os.path.exists("webpage"):
-    os.makedirs("webpage")
-app.mount("/student", StaticFiles(directory="webpage", html=True), name="student_web")
+# import os
+# if not os.path.exists("webpage"):
+#     os.makedirs("webpage")
+app.mount("/student_web", StaticFiles(directory="webpage", html=True), name="student_web")
 
 
 app.include_router(teacher.router, prefix="/api/teacher", tags=["Teacher App"])
+app.include_router(student.router, prefix="/api/student", tags=["Student Webpage"])
 # --- In-Memory DB (Swap to Supabase/SQLite later) ---
 sessions = {}
 
@@ -35,6 +37,11 @@ class SignalReq(BaseModel): session_code: str; student_uuid: str; milestone_id: 
 class DoubtReq(BaseModel): session_code: str; student_uuid: str; sub_topic: str; text: str
 
 # --- API ENDPOINTS ---
+# @app.get("/")
+# def redirect_to_app():
+#     """If someone just types the IP address, auto-redirect them to the app!"""
+#     return RedirectResponse(url="/webpage/index.html")
+
 
 @app.post("/api/join")
 async def join_session(req: JoinReq):

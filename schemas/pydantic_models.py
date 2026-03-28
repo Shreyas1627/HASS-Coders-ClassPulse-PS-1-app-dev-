@@ -22,12 +22,12 @@ class JoinReq(BaseModel):
 class SignalReq(BaseModel):
     session_code: str
     student_uuid: str
-    milestone_id: str
-    signal: str # 'got_it', 'sort_of', 'lost'
+    signal: str 
+    milestone_id: Optional[str] = None # Forgiving
 
 class DoubtReq(BaseModel):
     session_code: str
     student_uuid: str
-    milestone_id: str
     text: str
-    parent_id: Optional[str] = None # Used if this is a "Re-ask" follow-up
+    milestone_id: Optional[str] = None # Forgiving
+    parent_id: Optional[str] = None # Forgiving
