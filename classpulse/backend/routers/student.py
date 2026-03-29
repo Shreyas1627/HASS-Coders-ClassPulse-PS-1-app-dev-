@@ -15,25 +15,23 @@ async def join_session(req: JoinReq):
 
     session = res.data[0]
     
-    # Geofencing check (100 meter limit)
+    # Geofencing check (lenient — skip if student location unavailable)
     t_lat, t_lng = session.get("latitude"), session.get("longitude")
     if t_lat is not None and t_lng is not None:
-        if req.latitude is None or req.longitude is None:
-            raise HTTPException(status_code=403, detail="Location permission is required to join this session.")
+        if req.latitude is not None and req.longitude is not None:
+            # Haversine formula
+            R = 6371000 # Radius of Earth in meters
+            phi1 = math.radians(t_lat)
+            phi2 = math.radians(req.latitude)
+            delta_phi = math.radians(req.latitude - t_lat)
+            delta_lambda = math.radians(req.longitude - t_lng)
             
-        # Haversine formula
-        R = 6371000 # Radius of Earth in meters
-        phi1 = math.radians(t_lat)
-        phi2 = math.radians(req.latitude)
-        delta_phi = math.radians(req.latitude - t_lat)
-        delta_lambda = math.radians(req.longitude - t_lng)
-        
-        a = math.sin(delta_phi/2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2.0)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-        distance = R * c
-        
-        if distance > 100:
-            raise HTTPException(status_code=403, detail=f"You are too far from the classroom ({int(distance)}m). Maximum allowed is 100m.")
+            a = math.sin(delta_phi/2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2.0)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+            distance = R * c
+            
+            if distance > 5000:
+                raise HTTPException(status_code=403, detail=f"You are too far from the classroom ({int(distance)}m). Maximum allowed is 5km.")
 
     student_uuid = str(uuid.uuid4())
 
@@ -227,3 +225,55 @@ async def get_student_history(roll_number: str):
         })
 
     return {"sessions": result}
+
+# --- Student Timetable (by class_name) ---
+@router.get("/timetable/{class_name}")
+async def get_student_timetable(class_name: str):
+    res = supabase.table("timetable").select("*").eq("class_name", class_name).order("day_of_week").order("start_time").execute()
+    grouped = {}
+    for entry in res.data:
+        day = entry["day_of_week"]
+        if day not in grouped:
+            grouped[day] = []
+        # Student view: simplified entry with status
+        grouped[day].append(entry)
+    return {"timetable": grouped}
+
+# --- Student Today's Timetable ---
+@router.get("/todays-timetable/{class_name}")
+async def get_student_todays_timetable(class_name: str):
+    from datetime import datetime, timezone, timedelta
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist)
+    today_dow = now.weekday()
+    
+    res = supabase.table("timetable").select("*").eq("class_name", class_name).eq("day_of_week", today_dow).eq("is_holiday", False).order("start_time").execute()
+    
+    entries = []
+    for entry in res.data:
+        current_time = now.strftime("%H:%M:%S")
+        start = entry["start_time"]
+        end = entry["end_time"]
+        
+        if current_time < start:
+            entry["status"] = "upcoming"
+        elif current_time >= start and current_time <= end:
+            entry["status"] = "now"
+        else:
+            entry["status"] = "passed"
+        
+        # Check if a live session exists for this entry
+        today_str = now.strftime("%Y-%m-%d")
+        existing = supabase.table("sessions").select("id,session_code,is_active").eq("subject", entry["subject"]).eq("topic", entry.get("topic", "")).eq("is_active", True).gte("created_at", f"{today_str}T00:00:00").execute()
+        entry["is_live"] = len(existing.data) > 0
+        entry["live_session"] = existing.data[0] if existing.data else None
+        
+        entries.append(entry)
+    
+    return {"sessions": entries, "day": today_dow}
+
+# --- Student Missed Sessions ---
+@router.get("/missed/{class_name}")
+async def get_student_missed_sessions(class_name: str):
+    res = supabase.table("missed_sessions").select("*").eq("class_name", class_name).order("scheduled_date", desc=True).order("start_time", desc=True).execute()
+    return {"missed_sessions": res.data}

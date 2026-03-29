@@ -63,6 +63,12 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       child: Row(
         children: [
           // Logo
+          Image.asset(
+            'assets/images/logo.jpeg',
+            height: 36,
+            width: 36,
+          ),
+          const SizedBox(width: 8),
           const Text(
             'ClassPulse',
             style: TextStyle(

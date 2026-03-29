@@ -12,16 +12,19 @@ class ApiService {
   static String? _sessionCode;
   static String? _teacherId;
   static String? _rollNumber;
+  static String? _className;
 
   static String? get studentUuid => _studentUuid;
   static String? get sessionCode => _sessionCode;
   static String? get teacherId => _teacherId;
   static String? get rollNumber => _rollNumber;
+  static String? get className => _className;
 
   static void setTeacherId(String id) => _teacherId = id;
   static void setStudentUuid(String uuid) => _studentUuid = uuid;
   static void setSessionCode(String code) => _sessionCode = code;
   static void setRollNumber(String rn) => _rollNumber = rn;
+  static void setClassName(String cn) => _className = cn;
 
   static Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -404,5 +407,114 @@ class ApiService {
       if (res.statusCode == 200) return jsonDecode(res.body);
     } catch (_) {}
     return null;
+  }
+
+  // ═══════════ TIMETABLE ENDPOINTS ═══════════
+
+  /// Get weekly timetable for teacher
+  static Future<Map<String, dynamic>?> getTimetable(String teacherId) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/teacher/timetable/$teacherId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get today's sessions from timetable (teacher)
+  static Future<Map<String, dynamic>?> getTodaysSessions(String teacherId) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/teacher/todays-sessions/$teacherId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Start a session from a timetable entry
+  static Future<Map<String, dynamic>?> startFromTimetable({
+    required String timetableId,
+    required String teacherId,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/teacher/session/start-from-timetable'),
+        headers: _headers,
+        body: jsonEncode({
+          'timetable_id': timetableId,
+          'teacher_id': teacherId,
+        }),
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get missed sessions (teacher)
+  static Future<List<Map<String, dynamic>>> getMissedSessions(String teacherId) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/teacher/missed-sessions/$teacherId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return List<Map<String, dynamic>>.from(data['missed_sessions'] ?? []);
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Check and log missed sessions (teacher)
+  static Future<void> checkMissedSessions(String teacherId) async {
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/api/teacher/check-missed/$teacherId'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
+
+  /// Get student timetable (by class)
+  static Future<Map<String, dynamic>?> getStudentTimetable(String className) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/student/timetable/$className'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get student today's timetable
+  static Future<Map<String, dynamic>?> getStudentTodaysTimetable(String className) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/student/todays-timetable/$className'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Get student missed sessions
+  static Future<List<Map<String, dynamic>>> getStudentMissedSessions(String className) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_baseUrl/api/student/missed/$className'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return List<Map<String, dynamic>>.from(data['missed_sessions'] ?? []);
+      }
+    } catch (_) {}
+    return [];
   }
 }

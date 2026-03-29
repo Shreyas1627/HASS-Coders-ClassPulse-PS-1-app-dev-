@@ -62,7 +62,7 @@ class LectureSlot {
   }
 }
 
-const List<String> dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const List<String> dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 // ─── Missed Sessions ─────────────────────────────────────────────────────────
 
@@ -190,4 +190,148 @@ class StudentPastSession {
     required this.signal,
     this.doubt,
   });
+}
+
+// ─── Timetable Entry ─────────────────────────────────────────────────────────
+
+class TimetableEntry {
+  final String id;
+  final String teacherId;
+  final String className;
+  final String subject;
+  final String? topic;
+  final int dayOfWeek;
+  final String startTime;
+  final String endTime;
+  final bool isHoliday;
+  final String? status; // 'upcoming', 'now', 'passed'
+  final bool alreadyStarted;
+  final Map<String, dynamic>? existingSession;
+  // Student-specific
+  final bool isLive;
+  final Map<String, dynamic>? liveSession;
+
+  const TimetableEntry({
+    required this.id,
+    required this.teacherId,
+    required this.className,
+    required this.subject,
+    this.topic,
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+    this.isHoliday = false,
+    this.status,
+    this.alreadyStarted = false,
+    this.existingSession,
+    this.isLive = false,
+    this.liveSession,
+  });
+
+  factory TimetableEntry.fromJson(Map<String, dynamic> json) {
+    return TimetableEntry(
+      id: json['id'] ?? '',
+      teacherId: json['teacher_id'] ?? '',
+      className: json['class_name'] ?? '',
+      subject: json['subject'] ?? '',
+      topic: json['topic'],
+      dayOfWeek: json['day_of_week'] ?? 0,
+      startTime: json['start_time'] ?? '',
+      endTime: json['end_time'] ?? '',
+      isHoliday: json['is_holiday'] ?? false,
+      status: json['status'],
+      alreadyStarted: json['already_started'] ?? false,
+      existingSession: json['existing_session'],
+      isLive: json['is_live'] ?? false,
+      liveSession: json['live_session'],
+    );
+  }
+
+  String get formattedTime {
+    String fmt(String t) {
+      final parts = t.split(':');
+      if (parts.length < 2) return t;
+      int h = int.tryParse(parts[0]) ?? 0;
+      final m = parts[1];
+      final amPm = h >= 12 ? 'PM' : 'AM';
+      if (h > 12) h -= 12;
+      if (h == 0) h = 12;
+      return '$h:$m $amPm';
+    }
+    return '${fmt(startTime)} – ${fmt(endTime)}';
+  }
+
+  String get startTimeFormatted {
+    final parts = startTime.split(':');
+    if (parts.length < 2) return startTime;
+    int h = int.tryParse(parts[0]) ?? 0;
+    final m = parts[1];
+    if (h > 12) h -= 12;
+    if (h == 0) h = 12;
+    return '$h:$m';
+  }
+}
+
+// ─── Missed Session Entry ────────────────────────────────────────────────────
+
+class MissedSessionEntry {
+  final String id;
+  final String? timetableId;
+  final String teacherId;
+  final String className;
+  final String subject;
+  final String? topic;
+  final String scheduledDate;
+  final String startTime;
+  final String endTime;
+
+  const MissedSessionEntry({
+    required this.id,
+    this.timetableId,
+    required this.teacherId,
+    required this.className,
+    required this.subject,
+    this.topic,
+    required this.scheduledDate,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  factory MissedSessionEntry.fromJson(Map<String, dynamic> json) {
+    return MissedSessionEntry(
+      id: json['id'] ?? '',
+      timetableId: json['timetable_id'],
+      teacherId: json['teacher_id'] ?? '',
+      className: json['class_name'] ?? '',
+      subject: json['subject'] ?? '',
+      topic: json['topic'],
+      scheduledDate: json['scheduled_date'] ?? '',
+      startTime: json['start_time'] ?? '',
+      endTime: json['end_time'] ?? '',
+    );
+  }
+
+  String get formattedDate {
+    try {
+      final dt = DateTime.parse(scheduledDate);
+      final months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${months[dt.month]} ${dt.day}';
+    } catch (_) {
+      return scheduledDate;
+    }
+  }
+
+  String get formattedTime {
+    String fmt(String t) {
+      final parts = t.split(':');
+      if (parts.length < 2) return t;
+      int h = int.tryParse(parts[0]) ?? 0;
+      final m = parts[1];
+      final amPm = h >= 12 ? 'PM' : 'AM';
+      if (h > 12) h -= 12;
+      if (h == 0) h = 12;
+      return '$h:$m $amPm';
+    }
+    return '${fmt(startTime)} – ${fmt(endTime)}';
+  }
 }

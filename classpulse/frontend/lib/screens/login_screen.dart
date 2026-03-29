@@ -37,6 +37,10 @@ class _LoginScreenState extends State<LoginScreen> {
     // Store identity for API calls
     final email = _emailController.text.trim();
     ApiService.setTeacherId(email);
+    if (_role == 'student') {
+      ApiService.setClassName('10A'); // Default class for student
+      ApiService.setRollNumber(email);
+    }
 
     final destination = _role == 'teacher'
         ? const TeacherDashboard()
@@ -62,6 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
                 children: [
+                  Image.asset(
+                    'assets/images/logo.jpeg',
+                    height: 36,
+                    width: 36,
+                  ),
+                  const SizedBox(width: 8),
                   const Text(
                     'ClassPulse',
                     style: TextStyle(

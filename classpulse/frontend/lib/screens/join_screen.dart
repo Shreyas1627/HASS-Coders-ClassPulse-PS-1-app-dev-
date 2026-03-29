@@ -194,15 +194,26 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // App name — solid blue, no gradient
-          const Text(
-            'ClassPulse',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-              letterSpacing: -0.5,
-            ),
+          // App name with logo
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/images/logo.jpeg',
+                height: 36,
+                width: 36,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'ClassPulse',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
           ),
 
           // Scanner button — flat, no shadow

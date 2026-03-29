@@ -452,37 +452,36 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             // Subtopic progress tracker (if subtopics exist)
             if (widget.session.subtopics.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: _buildSubtopicTracker(),
               ),
-            // Category grid — fixed height
+            // Category grid — compact height
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: _buildCategoryGrid(),
             ),
             // Low understanding reminder
             if (_isLowUnderstanding && !_reminderDismissed)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
                 child: _buildGentleReminder(),
               ),
-            const SizedBox(height: 10),
-            // Main content: Pie chart (top) + Question Queue (bottom)
+            const SizedBox(height: 6),
+            // Main content: Pie chart (fixed) + Question Queue (scrollable)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Top: Pie Chart ──
-                    Expanded(
-                      flex: 2,
+                    // ── Top: Pie Chart (fixed height) ──
+                    SizedBox(
+                      height: 180,
                       child: _buildPieChartSection(),
                     ),
-                    const SizedBox(height: 12),
-                    // ── Bottom: Question Queue ──
+                    const SizedBox(height: 8),
+                    // ── Bottom: Question Queue (scrollable) ──
                     Expanded(
-                      flex: 3,
                       child: _buildQuestionQueueSection(),
                     ),
                   ],
@@ -702,7 +701,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         Row(
           children: [
             Expanded(
@@ -748,8 +747,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOut,
-        height: 100,
-        padding: const EdgeInsets.all(12),
+        height: 76,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
@@ -819,7 +818,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 Text(
                   '$count',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 20,
                     fontWeight: FontWeight.w900,
                     color: color,
                     height: 1,

@@ -331,3 +331,143 @@ async def advance_subtopic(session_code: str):
         "current_subtopic": subtopics[new_idx] if new_idx < len(subtopics) else "",
         "total": len(subtopics),
     }
+
+# --- Timetable (weekly) ---
+@router.get("/timetable/{teacher_id}")
+async def get_timetable(teacher_id: str):
+    res = supabase.table("timetable").select("*").eq("teacher_id", teacher_id).order("day_of_week").order("start_time").execute()
+    # Group by day_of_week
+    grouped = {}
+    for entry in res.data:
+        day = entry["day_of_week"]
+        if day not in grouped:
+            grouped[day] = []
+        grouped[day].append(entry)
+    return {"timetable": grouped}
+
+# --- Today's Sessions (from timetable) ---
+@router.get("/todays-sessions/{teacher_id}")
+async def get_todays_sessions(teacher_id: str):
+    from datetime import datetime, timezone, timedelta
+    # Indian Standard Time offset
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist)
+    today_dow = now.weekday()  # 0=Mon, 6=Sun
+    
+    res = supabase.table("timetable").select("*").eq("teacher_id", teacher_id).eq("day_of_week", today_dow).eq("is_holiday", False).order("start_time").execute()
+    
+    # For each entry, check if a session already exists today
+    entries = []
+    for entry in res.data:
+        # Check if a session was already started from this timetable entry today
+        today_str = now.strftime("%Y-%m-%d")
+        existing = supabase.table("sessions").select("id,session_code,is_active").eq("teacher_id", teacher_id).eq("subject", entry["subject"]).eq("topic", entry.get("topic", "")).gte("created_at", f"{today_str}T00:00:00").lte("created_at", f"{today_str}T23:59:59").execute()
+        
+        entry["already_started"] = len(existing.data) > 0
+        entry["existing_session"] = existing.data[0] if existing.data else None
+        
+        # Calculate status
+        current_time = now.strftime("%H:%M:%S")
+        start = entry["start_time"]
+        end = entry["end_time"]
+        
+        if current_time < start:
+            entry["status"] = "upcoming"
+        elif current_time >= start and current_time <= end:
+            entry["status"] = "now"
+        else:
+            entry["status"] = "passed"
+        
+        entries.append(entry)
+    
+    return {"sessions": entries, "day": today_dow}
+
+# --- Start Session from Timetable ---
+class TimetableStartReq(BaseModel):
+    timetable_id: str
+    teacher_id: str
+
+@router.post("/session/start-from-timetable")
+async def start_from_timetable(req: TimetableStartReq):
+    # Get the timetable entry
+    tt_res = supabase.table("timetable").select("*").eq("id", req.timetable_id).execute()
+    if not tt_res.data:
+        raise HTTPException(status_code=404, detail="Timetable entry not found")
+    
+    entry = tt_res.data[0]
+    code = str(random.randint(1000, 9999))
+    
+    data = {
+        "teacher_id": req.teacher_id,
+        "session_code": code,
+        "subject": entry["subject"],
+        "class_name": entry["class_name"],
+        "topic": entry.get("topic", ""),
+        "is_active": True,
+    }
+    
+    res = supabase.table("sessions").insert(data).execute()
+    if not res.data:
+        raise HTTPException(status_code=400, detail="Could not create session.")
+    
+    session = res.data[0]
+    return {
+        "status": "success",
+        "session_code": code,
+        "session_id": session["id"],
+        "class_name": entry["class_name"],
+        "subject": entry["subject"],
+        "topic": entry.get("topic", ""),
+        "message": "Session started from timetable!"
+    }
+
+# --- Missed Sessions ---
+@router.get("/missed-sessions/{teacher_id}")
+async def get_missed_sessions(teacher_id: str):
+    res = supabase.table("missed_sessions").select("*").eq("teacher_id", teacher_id).order("scheduled_date", desc=True).order("start_time", desc=True).execute()
+    return {"missed_sessions": res.data}
+
+# --- Check and log missed timetable sessions ---
+@router.post("/check-missed/{teacher_id}")
+async def check_missed_sessions(teacher_id: str):
+    from datetime import datetime, timezone, timedelta, date as dt_date
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist)
+    today_dow = now.weekday()
+    today_str = now.strftime("%Y-%m-%d")
+    
+    # Get today's timetable entries whose end_time has passed
+    tt_res = supabase.table("timetable").select("*").eq("teacher_id", teacher_id).eq("day_of_week", today_dow).eq("is_holiday", False).execute()
+    
+    missed_count = 0
+    for entry in tt_res.data:
+        current_time = now.strftime("%H:%M:%S")
+        if current_time <= entry["end_time"]:
+            continue  # Not yet passed
+        
+        # Check if a session was started for this entry today
+        existing = supabase.table("sessions").select("id").eq("teacher_id", teacher_id).eq("subject", entry["subject"]).eq("topic", entry.get("topic", "")).gte("created_at", f"{today_str}T00:00:00").lte("created_at", f"{today_str}T23:59:59").execute()
+        
+        if existing.data:
+            continue  # Session was started, not missed
+        
+        # Check if already logged as missed
+        missed_existing = supabase.table("missed_sessions").select("id").eq("timetable_id", entry["id"]).eq("scheduled_date", today_str).execute()
+        
+        if missed_existing.data:
+            continue  # Already logged
+        
+        # Log as missed
+        supabase.table("missed_sessions").insert({
+            "timetable_id": entry["id"],
+            "teacher_id": teacher_id,
+            "class_name": entry["class_name"],
+            "subject": entry["subject"],
+            "topic": entry.get("topic", ""),
+            "scheduled_date": today_str,
+            "start_time": entry["start_time"],
+            "end_time": entry["end_time"],
+        }).execute()
+        missed_count += 1
+    
+    return {"checked": missed_count, "message": f"{missed_count} sessions logged as missed"}
