@@ -6,6 +6,7 @@
     <title>ClassPulse | Live Session</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -21,120 +22,397 @@
             position: relative;
         }
 
-        /* Header - matches app */
+        /* ── Header ────────────────────────────────────────────────── */
         .header {
-            background: #FFFFFF;
-            padding: 14px 20px;
+            padding: 10px 16px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #E2E8F0;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+            gap: 12px;
         }
-        .logo { font-size: 20px; font-weight: 700; color: #2563EB; letter-spacing: -0.3px; }
-        .live-badge {
+        .back-btn {
+            padding: 8px;
+            background: rgba(37,99,235,0.08);
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+        .back-btn:active { transform: scale(0.93); }
+        .back-btn .material-icons-round { font-size: 20px; color: #2563EB; }
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1E293B;
+            letter-spacing: -0.3px;
+        }
+        .connected-badge {
+            display: flex;
+            align-items: center;
+            gap: 4px;
             background: rgba(16,185,129,0.12);
-            padding: 4px 10px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 6px;
         }
-        .live-dot {
-            width: 7px; height: 7px;
+        .connected-dot {
+            width: 6px; height: 6px;
             background: #10B981;
             border-radius: 50%;
             animation: pulse 1.5s infinite;
         }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .live-text { font-size: 11px; font-weight: 700; color: #10B981; }
+        .connected-text { font-size: 10px; font-weight: 700; color: #10B981; }
 
-        /* Signal buttons - matches app's student session screen */
-        .signals {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 16px 20px;
-            gap: 12px;
-            padding-bottom: 90px;
-        }
-        .signal-btn {
-            flex: 1;
-            min-height: 100px;
-            background: #FFFFFF;
-            border: 1.5px solid #E2E8F0;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
+        /* ── Session Info Card ──────────────────────────────────────── */
+        .session-info {
+            margin: 0 16px;
             padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+            background: #FFFFFF;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
-        .signal-btn:active { transform: scale(0.97); }
-        .signal-btn[data-signal="got_it"]:active { background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.3); }
-        .signal-btn[data-signal="may_be"]:active { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.3); }
-        .signal-btn[data-signal="not_understood"]:active { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.3); }
-
-        .signal-btn.selected {
-            border-width: 2px;
-        }
-        .signal-btn[data-signal="got_it"].selected { background: rgba(16,185,129,0.06); border-color: #10B981; }
-        .signal-btn[data-signal="may_be"].selected { background: rgba(245,158,11,0.06); border-color: #F59E0B; }
-        .signal-btn[data-signal="not_understood"].selected { background: rgba(239,68,68,0.06); border-color: #EF4444; }
-
-        .signal-icon {
-            width: 52px; height: 52px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 10px;
-            font-size: 26px;
-        }
-        .signal-btn[data-signal="got_it"] .signal-icon { background: rgba(16,185,129,0.1); }
-        .signal-btn[data-signal="may_be"] .signal-icon { background: rgba(245,158,11,0.1); }
-        .signal-btn[data-signal="not_understood"] .signal-icon { background: rgba(239,68,68,0.1); }
-
-        .signal-title {
-            font-size: 17px;
+        .session-subject {
+            font-size: 22px;
             font-weight: 800;
             color: #1E293B;
-            letter-spacing: -0.3px;
+            letter-spacing: -0.5px;
         }
-        .signal-desc {
+        .session-meta {
+            font-size: 13px;
+            color: #64748B;
+            font-weight: 500;
+            margin-top: 4px;
+        }
+
+        /* ── Subtopic Tracker ──────────────────────────────────────── */
+        .subtopic-tracker {
+            display: none;
+            margin: 10px 16px 0;
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 14px;
+            padding: 14px;
+        }
+        .subtopic-tracker.visible { display: block; }
+        .progress-dots {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .progress-dots .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #E2E8F0;
+            flex-shrink: 0;
+        }
+        .progress-dots .dot.done { background: #10B981; }
+        .progress-dots .dot.active { background: #2563EB; }
+        .progress-dots .line {
+            flex: 1;
+            height: 2px;
+            background: #E2E8F0;
+        }
+        .progress-dots .line.done { background: #10B981; }
+        .topic-columns {
+            display: flex;
+        }
+        .topic-col {
+            flex: 1;
+            text-align: center;
+            padding: 0 4px;
+        }
+        .topic-col + .topic-col {
+            border-left: 1px solid #E2E8F0;
+        }
+        .topic-col-icon {
+            font-size: 16px;
+            margin-bottom: 2px;
+        }
+        .topic-col-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+        .topic-col-label.lbl-done { color: #10B981; }
+        .topic-col-label.lbl-active { color: #2563EB; }
+        .topic-col-label.lbl-next { color: #94A3B8; }
+        .topic-col-name {
+            font-size: 11px;
+            font-weight: 500;
+            color: #64748B;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ── Signal Buttons Area ────────────────────────────────────── */
+        .signal-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 8px 20px;
+            overflow: hidden;
+        }
+        .signal-heading {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1E293B;
+        }
+        .signal-subheading {
+            text-align: center;
             font-size: 12px;
             color: #94A3B8;
             font-weight: 500;
-            margin-top: 2px;
+            margin-bottom: 12px;
+        }
+        .signal-buttons {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .signal-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border-radius: 16px;
+            border: 1.5px solid transparent;
+            cursor: pointer;
+            transition: all 0.25s;
+            font-family: inherit;
+            padding: 16px;
+            min-height: 70px;
+        }
+        .signal-btn:active { transform: scale(0.97); }
+        .signal-btn .signal-icon { font-size: 24px; color: white; }
+        .signal-btn .signal-label {
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+        }
+        .signal-btn .signal-edit { font-size: 16px; color: rgba(255,255,255,0.7); }
+        .signal-btn .signal-check { font-size: 18px; color: rgba(255,255,255,0.9); display: none; }
+
+        /* Button colors */
+        .signal-btn.btn-got-it {
+            background: #10B981;
+            box-shadow: 0 4px 8px rgba(16,185,129,0.35);
+        }
+        .signal-btn.btn-sort-of {
+            background: #F59E0B;
+            box-shadow: 0 4px 8px rgba(245,158,11,0.35);
+        }
+        .signal-btn.btn-lost {
+            background: #EF4444;
+            box-shadow: 0 4px 8px rgba(239,68,68,0.35);
         }
 
-        /* FAB - matches app */
-        .fab {
-            position: absolute;
-            bottom: 24px;
-            right: 20px;
-            background: #2563EB;
-            color: white;
-            border: 3px solid white;
-            border-radius: 50px;
-            padding: 14px 22px;
+        /* Selected state */
+        .signal-btn.selected {
+            border: 3px solid rgba(255,255,255,0.4);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+        }
+        .signal-btn.selected .signal-check { display: inline; }
+
+        /* Disabled state */
+        .signal-btn.disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+        .signal-btn.selected.disabled {
+            opacity: 1;
+        }
+
+        /* ── Signal Confirmation Bar ───────────────────────────────── */
+        .signal-confirm {
+            display: none;
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin-top: 8px;
+            align-items: center;
+            gap: 8px;
+        }
+        .signal-confirm.visible { display: flex; }
+        .signal-confirm .confirm-icon { font-size: 16px; }
+        .signal-confirm .confirm-text {
+            flex: 1;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .signal-confirm .change-btn {
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 12px;
             font-weight: 700;
-            font-size: 14px;
             cursor: pointer;
-            box-shadow: 0 6px 20px rgba(37,99,235,0.3);
+            border: none;
+            background: transparent;
             transition: all 0.15s;
+        }
+        .signal-confirm .change-btn:active { transform: scale(0.95); }
+
+        /* ── Cooldown Bar ──────────────────────────────────────────── */
+        .cooldown-bar {
+            display: none;
+            padding: 10px 14px;
+            background: #F1F5F9;
+            border-radius: 10px;
+            border: 1px solid #E2E8F0;
+            margin-top: 6px;
+        }
+        .cooldown-bar.visible { display: block; }
+        .cooldown-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .cooldown-timer {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748B;
+        }
+        .cooldown-change {
+            margin-left: auto;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .cooldown-progress {
+            width: 100%;
+            height: 4px;
+            background: #E2E8F0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .cooldown-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s linear;
+        }
+
+        /* ── Bottom Questions Panel ────────────────────────────────── */
+        .questions-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #FFFFFF;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
+            z-index: 20;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 65vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .questions-panel.collapsed {
+            transform: translateY(calc(100% - 56px));
+        }
+        .questions-handle {
+            padding: 10px 20px 12px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .handle-bar {
+            width: 36px;
+            height: 4px;
+            background: #E2E8F0;
+            border-radius: 2px;
+            margin: 0 auto 10px;
+        }
+        .questions-header {
             display: flex;
             align-items: center;
             gap: 8px;
-            z-index: 10;
         }
-        .fab:active { transform: scale(0.95); }
+        .questions-header .material-icons-round { font-size: 18px; color: #2563EB; }
+        .questions-title {
+            flex: 1;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1E293B;
+        }
+        .questions-count {
+            font-size: 12px;
+            font-weight: 600;
+            color: #94A3B8;
+        }
+        .fab-doubt {
+            width: 32px; height: 32px;
+            background: #2563EB;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+            transition: all 0.15s;
+        }
+        .fab-doubt:active { transform: scale(0.9); }
 
-        /* Doubt Modal - matches app's doubt sheet */
+        .questions-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 20px 20px;
+        }
+        .q-card {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 14px;
+            margin-bottom: 8px;
+            align-items: flex-start;
+        }
+        .q-card.addressed { opacity: 0.5; }
+        .q-upvote {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            cursor: pointer;
+        }
+        .q-upvote .material-icons-round { font-size: 20px; color: #94A3B8; transition: color 0.15s; }
+        .q-upvote.active .material-icons-round { color: #2563EB; }
+        .q-upvote-count { font-size: 11px; font-weight: 700; color: #64748B; }
+        .q-text {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            color: #1E293B;
+            line-height: 1.4;
+        }
+        .q-ai-badge {
+            font-size: 10px;
+            font-weight: 600;
+            color: #2563EB;
+            background: rgba(37,99,235,0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+            display: inline-block;
+            cursor: pointer;
+        }
+        .q-empty {
+            text-align: center;
+            padding: 32px 16px;
+            color: #94A3B8;
+            font-size: 13px;
+        }
+
+        /* ── Doubt Modal ───────────────────────────────────────────── */
         .doubt-overlay {
             display: none;
             position: fixed;
@@ -209,78 +487,190 @@
             cursor: pointer;
             transition: all 0.15s;
             border: none;
+            font-family: inherit;
         }
         .doubt-actions button:active { transform: scale(0.97); }
         .btn-cancel { background: transparent; color: #94A3B8; }
         .btn-send { background: #2563EB; color: white; box-shadow: 0 4px 12px rgba(37,99,235,0.2); }
 
-        /* Quiz modal */
-        .quiz-overlay {
+        /* ── Tab Lock Overlay ──────────────────────────────────────── */
+        .lock-overlay {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(37,99,235,0.95);
-            backdrop-filter: blur(12px);
-            z-index: 60;
+            background: rgba(15,23,42,0.97);
+            backdrop-filter: blur(24px);
+            z-index: 100;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 32px;
+            padding: 40px;
+            text-align: center;
         }
-        .quiz-overlay.visible { display: flex; }
+        .lock-overlay.visible { display: flex; }
+        .lock-icon {
+            width: 80px; height: 80px;
+            background: rgba(239,68,68,0.15);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+        .lock-icon .material-icons-round {
+            font-size: 40px;
+            color: #EF4444;
+        }
+        .lock-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 8px;
+        }
+        .lock-subtitle {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+            font-weight: 500;
+            line-height: 1.6;
+            max-width: 320px;
+        }
+        .lock-warning-count {
+            margin-top: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #EF4444;
+            background: rgba(239,68,68,0.15);
+            padding: 8px 16px;
+            border-radius: 8px;
+        }
+        .lock-return-btn {
+            margin-top: 24px;
+            padding: 14px 32px;
+            background: #2563EB;
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(37,99,235,0.4);
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .lock-return-btn:active { transform: scale(0.97); }
+
+        /* ── Snackbar / Toast ──────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1E293B;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            z-index: 90;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            white-space: nowrap;
+        }
+        .toast.visible { transform: translateX(-50%) translateY(0); }
     </style>
 </head>
 <body>
-    <header class="header">
-        <span class="logo">ClassPulse</span>
-        <div class="live-badge">
-            <span class="live-dot"></span>
-            <span id="currentTopic" class="live-text">Live Session</span>
+    <!-- Header -->
+    <div class="header">
+        <button id="backBtn" class="back-btn">
+            <span class="material-icons-round">arrow_back</span>
+        </button>
+        <span class="header-title">Live Session</span>
+        <div class="connected-badge">
+            <span class="connected-dot"></span>
+            <span class="connected-text">Connected</span>
         </div>
-    </header>
-
-    <div class="signals">
-        <button class="signal-btn" data-signal="got_it">
-            <div class="signal-icon">✅</div>
-            <span class="signal-title">Got It</span>
-            <p class="signal-desc">I understand clearly</p>
-        </button>
-
-        <button class="signal-btn" data-signal="may_be">
-            <div class="signal-icon">⚡</div>
-            <span class="signal-title">Sort Of</span>
-            <p class="signal-desc">Slightly confused</p>
-        </button>
-
-        <button class="signal-btn" data-signal="not_understood">
-            <div class="signal-icon">🛑</div>
-            <span class="signal-title">Lost</span>
-            <p class="signal-desc">I am totally lost</p>
-        </button>
     </div>
 
-    <button id="fabDoubt" class="fab">
-        <span>✋</span>
-        <span>Ask a Doubt</span>
-    </button>
+    <!-- Session Info Card -->
+    <div class="session-info">
+        <div id="sessionSubject" class="session-subject">Subject</div>
+        <div id="sessionMeta" class="session-meta">Class · Live</div>
+    </div>
 
+    <!-- Subtopic Tracker -->
+    <div id="subtopicTracker" class="subtopic-tracker">
+        <div id="progressDots" class="progress-dots"></div>
+        <div id="topicColumns" class="topic-columns"></div>
+    </div>
+
+    <!-- Signal Area -->
+    <div class="signal-area">
+        <div class="signal-heading">How are you following?</div>
+        <div class="signal-subheading">Your response is anonymous</div>
+        <div class="signal-buttons">
+            <button class="signal-btn btn-got-it" data-signal="got_it">
+                <span class="material-icons-round signal-icon">check_circle</span>
+                <span class="signal-label">Got it</span>
+                <span class="material-icons-round signal-check">check</span>
+            </button>
+            <button class="signal-btn btn-sort-of" data-signal="sort_of">
+                <span class="material-icons-round signal-icon">help</span>
+                <span class="signal-label">Sort of</span>
+                <span class="material-icons-round signal-edit">edit_note</span>
+                <span class="material-icons-round signal-check">check</span>
+            </button>
+            <button class="signal-btn btn-lost" data-signal="lost">
+                <span class="material-icons-round signal-icon">cancel</span>
+                <span class="signal-label">Lost</span>
+                <span class="material-icons-round signal-edit">edit_note</span>
+                <span class="material-icons-round signal-check">check</span>
+            </button>
+        </div>
+
+        <!-- Signal Confirmation -->
+        <div id="signalConfirm" class="signal-confirm"></div>
+
+        <!-- Cooldown Bar -->
+        <div id="cooldownBar" class="cooldown-bar">
+            <div class="cooldown-row">
+                <span class="material-icons-round" style="font-size:14px;color:#94A3B8;">timer</span>
+                <span id="cooldownText" class="cooldown-timer">Next response in 30s</span>
+                <span id="cooldownChange" class="cooldown-change" style="color:#F59E0B;">You can change once</span>
+            </div>
+            <div class="cooldown-progress">
+                <div id="cooldownFill" class="cooldown-fill" style="width:100%;background:#10B981;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Questions Panel -->
+    <div id="questionsPanel" class="questions-panel collapsed">
+        <div class="questions-handle" id="questionsHandle">
+            <div class="handle-bar"></div>
+            <div class="questions-header">
+                <span class="material-icons-round">forum</span>
+                <span class="questions-title">Student Questions</span>
+                <span id="questionsCount" class="questions-count">0</span>
+                <button id="fabDoubt" class="fab-doubt">
+                    <span class="material-icons-round" style="font-size:18px;">add</span>
+                </button>
+            </div>
+        </div>
+        <div id="questionsList" class="questions-list"></div>
+    </div>
+
+    <!-- Doubt Modal -->
     <div id="doubtModal" class="doubt-overlay">
         <div class="doubt-sheet">
             <div class="doubt-handle"></div>
             <h3 class="doubt-title">What's confusing?</h3>
             <p class="doubt-subtitle">Select the topic and describe your doubt.</p>
 
-            <div class="field-label">Lecture Concept</div>
+            <div class="field-label">Subtopic</div>
             <select id="mainTopic" class="field-select">
-                <option value="">Choose Main Topic...</option>
+                <option value="">Choose Subtopic...</option>
             </select>
-
-            <div id="subTopicWrapper" style="display:none;">
-                <div class="field-label">Specific Detail</div>
-                <select id="subTopic" class="field-select">
-                    <option value="">Select Sub-topic...</option>
-                </select>
-            </div>
 
             <div class="field-label">Your Question</div>
             <textarea id="doubtText" class="field-textarea" rows="3" placeholder="Type your doubt here..."></textarea>
@@ -292,11 +682,22 @@
         </div>
     </div>
 
-    <div id="quizModal" class="quiz-overlay">
-        <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">Live Quiz</p>
-        <h2 id="quizQuestion" style="font-size:22px;font-weight:800;color:white;text-align:center;margin-bottom:32px;line-height:1.4;">Loading...</h2>
-        <div id="quizOptions" style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px;"></div>
+    <!-- Tab Lock Overlay -->
+    <div id="lockOverlay" class="lock-overlay">
+        <div class="lock-icon">
+            <span class="material-icons-round">lock</span>
+        </div>
+        <div class="lock-title">Session Locked</div>
+        <div class="lock-subtitle">
+            Please stay on this tab during the live session.
+            Switching tabs or apps is not allowed.
+        </div>
+        <div id="lockWarningCount" class="lock-warning-count"></div>
+        <button id="lockReturnBtn" class="lock-return-btn">Return to Session</button>
     </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
 
     <script src="js/api.js"></script>
     <script src="js/ui.js"></script>

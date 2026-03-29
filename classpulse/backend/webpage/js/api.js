@@ -2,11 +2,13 @@
 const API_BASE = window.location.origin;
 
 const api = {
-    async join(session_code, roll_number) {
+    getBaseUrl() { return API_BASE; },
+
+    async join(session_code, roll_number, latitude = null, longitude = null) {
         const res = await fetch(`${API_BASE}/api/student/join`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_code, roll_number })
+            body: JSON.stringify({ session_code, roll_number, latitude, longitude })
         });
         return res.json();
     },
@@ -38,6 +40,20 @@ const api = {
 
     async pollStatus(session_code) {
         const res = await fetch(`${API_BASE}/api/student/poll/status/${session_code}`);
+        return res.json();
+    },
+
+    async getQuestions(session_code) {
+        const res = await fetch(`${API_BASE}/api/student/questions/${session_code}`);
+        return res.json();
+    },
+
+    async upvote(question_id) {
+        const res = await fetch(`${API_BASE}/api/student/question/upvote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question_id })
+        });
         return res.json();
     },
 

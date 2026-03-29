@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/history_tab.dart';
 import 'live_session_screen.dart';
@@ -420,12 +421,27 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
     final topic = _topicController.text.trim();
     final subtopic = _subtopicController.text.trim();
 
+    final pos = await LocationService.getCurrentLocation();
+    if (pos == null) {
+      if (!mounted) return;
+      setState(() => _isCreating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location permission is required to create a session for Geofencing.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
     // Try API first
     final apiResult = await ApiService.createSession(
       className: className,
       subject: subject,
       topic: topic,
       subtopic: subtopic.isNotEmpty ? subtopic : null,
+      latitude: pos.latitude,
+      longitude: pos.longitude,
     );
 
     if (!mounted) return;
@@ -448,6 +464,11 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
 
     final joinCode = apiResult['session_code'];
 
+    // Parse comma-separated subtopics
+    final subtopicsList = subtopic.isNotEmpty
+        ? subtopic.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+        : <String>[];
+
     final newSession = LectureSlot(
       time: _formattedDateTime.isNotEmpty ? _formattedDateTime : 'Now',
       className: className,
@@ -455,6 +476,7 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
       topic: topic,
       isCurrentOrPast: true,
       joinCode: joinCode,
+      subtopics: subtopicsList,
     );
 
     Navigator.pop(context); // Close sheet
@@ -544,12 +566,12 @@ class _CreateSessionSheetState extends State<_CreateSessionSheet> {
               ),
               const SizedBox(height: 14),
 
-              // Subtopic field (optional)
+              // Subtopics field (comma-separated, ordered)
               _buildTextField(
                 controller: _subtopicController,
-                label: 'Subtopic (Optional)',
-                hint: 'e.g. Factorization, Quadratic Formula',
-                icon: Icons.subdirectory_arrow_right_rounded,
+                label: 'Subtopics (comma-separated)',
+                hint: 'e.g. Intro, Variables, Expressions, Practice',
+                icon: Icons.format_list_numbered_rounded,
               ),
               const SizedBox(height: 14),
 

@@ -37,12 +37,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
   // Question queue state
   late List<StudentQuestion> _questions;
+  List<Map<String, dynamic>> _connectedStudents = [];
 
   // Session duration tracking
   final DateTime _sessionStartTime = DateTime.now();
 
   // Text-to-speech
   final FlutterTts _flutterTts = FlutterTts();
+
+  // Subtopic tracking
+  int _currentSubtopicIndex = 0;
 
   @override
   void initState() {
@@ -114,7 +118,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
         ...List.filled(noVote > 0 ? noVote : 0, ComprehensionSignal.noVote),
       ];
 
-      // Update questions from API (including questionId)
+      // Update questions from API (including questionId, studentUuid, subtopic)
       final apiQuestions = data['questions'] as List<dynamic>? ?? [];
       final newQuestions = apiQuestions.map((q) => StudentQuestion(
         text: (q['translated_text'] ?? q['original_text'] ?? '') as String,
@@ -122,11 +126,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
         upvotes: (q['upvotes'] ?? 0) as int,
         isAddressed: (q['is_addressed'] ?? false) as bool,
         questionId: q['id']?.toString(),
+        studentUuid: q['student_uuid']?.toString(),
+        subtopic: q['subtopic']?.toString(),
       )).toList();
+
+      final apiStudents = data['connected_students'] as List<dynamic>? ?? [];
+      final studentsList = List<Map<String, dynamic>>.from(apiStudents);
 
       setState(() {
         _liveSignals = newSignals;
         _questions = newQuestions;
+        _connectedStudents = studentsList;
+        // Sync subtopic index from API
+        _currentSubtopicIndex = data['current_subtopic_index'] as int? ?? _currentSubtopicIndex;
       });
 
       // Animate from previous to new values
@@ -237,7 +249,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
               if (!mounted) return;
 
-              // Use API summary data if available, else use local state
+              // Use accumulated history data for summary, fallback to per-student, then local
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -247,9 +259,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                     topic: widget.session.topic,
                     duration: _sessionDuration,
                     totalStudents: summary?['total_students'] ?? _total,
-                    gotItCount: summary?['got_it'] ?? _gotItCount,
-                    sortOfCount: summary?['sort_of'] ?? _sortOfCount,
-                    lostCount: summary?['lost'] ?? _lostCount,
+                    gotItCount: summary?['hist_got_it'] ?? summary?['got_it'] ?? _gotItCount,
+                    sortOfCount: summary?['hist_sort_of'] ?? summary?['sort_of'] ?? _sortOfCount,
+                    lostCount: summary?['hist_lost'] ?? summary?['lost'] ?? _lostCount,
                     questionsAsked: summary?['total_questions'] ?? _questions.length,
                     questionsAddressed: summary?['questions_addressed'] ??
                         _questions.where((q) => q.isAddressed).length,
@@ -437,6 +449,12 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           children: [
             _buildHeader(),
             _buildSessionInfoBar(),
+            // Subtopic progress tracker (if subtopics exist)
+            if (widget.session.subtopics.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _buildSubtopicTracker(),
+              ),
             // Category grid — fixed height
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -449,21 +467,22 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 child: _buildGentleReminder(),
               ),
             const SizedBox(height: 10),
-            // Main content: Pie chart (left) + Question Queue (right)
+            // Main content: Pie chart (top) + Question Queue (bottom)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Row(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // ── Left: Pie Chart (35% width) ──
-                    SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.35,
+                    // ── Top: Pie Chart ──
+                    Expanded(
+                      flex: 2,
                       child: _buildPieChartSection(),
                     ),
-                    const SizedBox(width: 12),
-                    // ── Right: Question Queue (remaining width) ──
+                    const SizedBox(height: 12),
+                    // ── Bottom: Question Queue ──
                     Expanded(
+                      flex: 3,
                       child: _buildQuestionQueueSection(),
                     ),
                   ],
@@ -977,6 +996,205 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
+  // ── Subtopic Tracker (teacher can advance) ──────────────────────────────
+  Widget _buildSubtopicTracker() {
+    final subs = widget.session.subtopics;
+    final idx = _currentSubtopicIndex;
+    final isLast = idx >= subs.length - 1;
+
+    // Determine done / active / next subtopics
+    final doneTopic = idx > 0 ? subs[idx - 1] : '—';
+    final activeTopic = idx < subs.length ? subs[idx] : subs.last;
+    final nextTopic = idx < subs.length - 1 ? subs[idx + 1] : '—';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider, width: 1),
+      ),
+      child: Column(
+        children: [
+          // Progress dots
+          Row(
+            children: [
+              for (int i = 0; i < subs.length; i++) ...[
+                if (i > 0) Expanded(
+                  child: Container(
+                    height: 2,
+                    color: i <= idx ? AppColors.success : AppColors.divider,
+                  ),
+                ),
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < idx
+                        ? AppColors.success
+                        : i == idx
+                            ? AppColors.primary
+                            : AppColors.divider,
+                    border: i == idx
+                        ? Border.all(color: AppColors.primary, width: 2)
+                        : null,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Done → Active → Next labels
+          Row(
+            children: [
+              Expanded(
+                child: _subtopicLabel(
+                  'Done',
+                  doneTopic,
+                  AppColors.success,
+                  Icons.check_circle_rounded,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 36,
+                color: AppColors.divider,
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              Expanded(
+                child: _subtopicLabel(
+                  'Active',
+                  activeTopic,
+                  AppColors.primary,
+                  Icons.play_circle_rounded,
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 36,
+                color: AppColors.divider,
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+              ),
+              Expanded(
+                child: _subtopicLabel(
+                  'Next',
+                  nextTopic,
+                  AppColors.textMuted,
+                  Icons.skip_next_rounded,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Advance button
+          GestureDetector(
+            onTap: isLast ? null : _advanceSubtopic,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: isLast
+                    ? AppColors.surfaceAlt
+                    : AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isLast
+                      ? AppColors.divider
+                      : AppColors.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isLast
+                          ? Icons.check_rounded
+                          : Icons.arrow_forward_rounded,
+                      size: 14,
+                      color: isLast ? AppColors.textMuted : AppColors.primary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isLast
+                          ? 'All subtopics covered'
+                          : 'Next Subtopic (${idx + 1}/${subs.length})',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            isLast ? AppColors.textMuted : AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subtopicLabel(
+    String label,
+    String topic,
+    Color color,
+    IconData icon,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          topic,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 10,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  void _advanceSubtopic() async {
+    HapticFeedback.mediumImpact();
+    final result =
+        await ApiService.advanceSubtopic(widget.session.joinCode);
+    if (result != null && mounted) {
+      final newIdx = result['current_subtopic_index'] as int? ?? _currentSubtopicIndex;
+      setState(() {
+        _currentSubtopicIndex = newIdx;
+      });
+      if (result['status'] == 'already_at_last') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('All subtopics covered! 🎉',
+                style: TextStyle(color: Colors.white)),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
+  }
+
   // ── Pie Chart Section (left side) ──────────────────────────────────────
   Widget _buildPieChartSection() {
     final score = _understandingScore;
@@ -1006,139 +1224,144 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
-            'Understanding',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: scoreColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              scoreLabel,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: scoreColor,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          // Pie chart — compact
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final chartSize = math.min(constraints.maxWidth * 0.85, 120.0);
-              return SizedBox(
-                height: chartSize,
-                width: chartSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    CustomPaint(
-                      size: Size(chartSize, chartSize),
-                      painter: _PieChartPainter(
-                        gotItPct: _animGotIt,
-                        sortOfPct: _animSortOf,
-                        lostPct: _animLost,
-                        noVotePct: _animNoVote,
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${score.round()}%',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: scoreColor,
-                            height: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        const Text(
-                          'score',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          // Vertical legend
-          _pieLegend(AppColors.success, 'Got it', _gotItCount),
-          const SizedBox(height: 6),
-          _pieLegend(AppColors.amber, 'Sort of', _sortOfCount),
-          const SizedBox(height: 6),
-          _pieLegend(AppColors.warning, 'Lost', _lostCount),
-          const SizedBox(height: 6),
-          _pieLegend(AppColors.textMuted, 'No vote', _noVoteCount),
-          const SizedBox(height: 16),
-          // Quick Actions legend
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceAlt,
-              borderRadius: BorderRadius.circular(10),
-            ),
+          // Left side: Score and Pie Chart
+          Expanded(
+            flex: 4,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Quick Actions',
+                  'Understanding',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 8),
-                _actionLegendRow(
-                  Icons.check_circle_outline_rounded,
-                  AppColors.success,
-                  'Acknowledge',
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: scoreColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    scoreLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: scoreColor,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                _actionLegendRow(
-                  Icons.close_rounded,
-                  AppColors.warning,
-                  'Dismiss',
+                const SizedBox(height: 10),
+                // Pie chart — compact
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final chartSize = math.min(constraints.maxWidth * 0.85, 95.0);
+                    return SizedBox(
+                      height: chartSize,
+                      width: chartSize,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            size: Size(chartSize, chartSize),
+                            painter: _PieChartPainter(
+                              gotItPct: _animGotIt,
+                              sortOfPct: _animSortOf,
+                              lostPct: _animLost,
+                              noVotePct: _animNoVote,
+                            ),
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${score.round()}%',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: scoreColor,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              const Text(
+                                'score',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Right side: Vertical legend + Students
+          Expanded(
+            flex: 5,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _pieLegend(AppColors.success, 'Got it', _gotItCount),
                 const SizedBox(height: 6),
-                _actionLegendRow(
-                  Icons.record_voice_over_rounded,
-                  AppColors.primary,
-                  'Read Aloud',
-                ),
+                _pieLegend(AppColors.amber, 'Sort of', _sortOfCount),
                 const SizedBox(height: 6),
-                _actionLegendRow(
-                  Icons.auto_awesome_rounded,
-                  AppColors.amber,
-                  'AI Answer',
+                _pieLegend(AppColors.warning, 'Lost', _lostCount),
+                const SizedBox(height: 16),
+                // Joined Students List Button replaces No Votes
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _showStudentsList();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Students Joined',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        Text(
+                          '${_connectedStudents.length}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
         ],
-      ),
       ),
     );
   }
@@ -1177,22 +1400,93 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
     );
   }
 
-  Widget _actionLegendRow(IconData icon, Color color, String label) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
+  void _showStudentsList() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-        ),
-      ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Connected Students',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _connectedStudents.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No students connected yet.',
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: _connectedStudents.length,
+                        itemBuilder: (context, index) {
+                          final student = _connectedStudents[index];
+                          final uuidStr = student['student_uuid']?.toString() ?? 'Unknown UUID';
+                          final isBlocked = student['is_blocked'] == true;
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: isBlocked ? AppColors.warning.withValues(alpha: 0.1) : AppColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isBlocked ? AppColors.warning : AppColors.divider,
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.person_outline_rounded, size: 20, color: AppColors.textSecondary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    uuidStr.length > 8 ? uuidStr.substring(0, 8) : uuidStr,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: isBlocked ? AppColors.warning : AppColors.textPrimary,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                                if (isBlocked)
+                                  const Icon(Icons.block_rounded, size: 16, color: AppColors.warning)
+                                else
+                                  const Icon(Icons.check_circle_rounded, size: 16, color: AppColors.success),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.surface,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Close', style: TextStyle(color: AppColors.textPrimary)),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1416,9 +1710,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
                 filled: false,
                 onTap: () {
                   HapticFeedback.lightImpact();
+                  final questionId = _questions[index].questionId;
                   setState(() {
                     _questions.removeAt(index);
                   });
+                  if (questionId != null) {
+                    ApiService.dismissQuestion(questionId);
+                  }
                 },
               ),
               const SizedBox(width: 4),
@@ -1884,6 +2182,8 @@ class _AIAnswerSheetState extends State<_AIAnswerSheet> {
                   questionId: widget.questionId!,
                   answerText: _answer,
                 );
+                // Auto-mark as addressed when AI answer is sent
+                await ApiService.markQuestionAddressed(widget.questionId!);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

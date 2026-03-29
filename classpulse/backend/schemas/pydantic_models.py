@@ -13,6 +13,8 @@ class SessionCreateReq(BaseModel):
     topic: str
     subtopic: Optional[str] = None
     scheduled_at: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class SessionStartReq(BaseModel):
     session_id: str  # The UUID of the pre-scheduled session
@@ -33,6 +35,8 @@ class QuestionAddressedReq(BaseModel):
 class JoinReq(BaseModel):
     session_code: str
     roll_number: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class SignalReq(BaseModel):
     session_code: str
@@ -46,6 +50,11 @@ class DoubtReq(BaseModel):
     text: str
     milestone_id: Optional[str] = None
     parent_id: Optional[str] = None
+    subtopic: Optional[str] = None
+
+class TabSwitchReq(BaseModel):
+    session_code: str
+    student_uuid: str
 
 class QuestionUpvoteReq(BaseModel):
     question_id: str

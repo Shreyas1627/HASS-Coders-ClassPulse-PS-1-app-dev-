@@ -39,6 +39,8 @@ async def create_session(req: SessionCreateReq):
         "class_name": req.class_name,
         "topic": req.topic,
         "subtopic": req.subtopic,
+        "latitude": req.latitude,
+        "longitude": req.longitude,
         "is_active": True,
     }
     if req.scheduled_at:
@@ -168,24 +170,52 @@ async def poll_dashboard(session_code: str):
     sort_of = len([s for s in signals if s['signal_type'] == 'sort_of'])
     lost = len([s for s in signals if s['signal_type'] == 'lost'])
 
-    questions_res = supabase.table("questions").select("id,original_text,translated_text,status,ai_response,upvotes,is_addressed,created_at").eq("session_code", session_code).neq("status", "spam").order("upvotes", desc=True).execute()
+    questions_res = supabase.table("questions").select("id,original_text,translated_text,status,ai_response,upvotes,is_addressed,student_uuid,subtopic,created_at").eq("session_code", session_code).neq("status", "spam").order("upvotes", desc=True).execute()
 
-    attendance_res = supabase.table("attendance").select("id", count="exact").eq("session_code", session_code).execute()
+    attendance_res = supabase.table("attendance").select("student_uuid, joined_at, is_blocked", count="exact").eq("session_code", session_code).execute()
     total = attendance_res.count if attendance_res.count else (got_it + sort_of + lost)
+
+    # Get session info for subtopic data
+    session_res = supabase.table("sessions").select("subtopic,current_subtopic_index").eq("session_code", session_code).execute()
+    session_data = session_res.data[0] if session_res.data else {}
 
     return {
         "got_it": got_it,
         "sort_of": sort_of,
         "lost": lost,
         "total": total,
-        "questions": questions_res.data
+        "students": attendance_res.data,
+        "questions": questions_res.data,
+        "subtopic": session_data.get("subtopic", ""),
+        "current_subtopic_index": session_data.get("current_subtopic_index", 0),
     }
+
+# --- Unblock Student ---
+class UnblockStudentReq(BaseModel):
+    session_code: str
+    student_uuid: str
+
+@router.post("/student/unblock")
+async def unblock_student(req: UnblockStudentReq):
+    supabase.table("attendance").update({
+        "is_blocked": False,
+        "warnings": 0 
+    }).eq("session_code", req.session_code).eq("student_uuid", req.student_uuid).execute()
+    return {"status": "success", "message": "Student unblocked"}
 
 # --- End Session ---
 @router.post("/session/end/{session_code}")
 async def end_session(session_code: str):
     supabase.table("sessions").update({"is_active": False}).eq("session_code", session_code).execute()
 
+    # --- Use signal_history for ACCUMULATED counts (full session picture) ---
+    history_res = supabase.table("signal_history").select("signal_type").eq("session_code", session_code).execute()
+    history = history_res.data
+    hist_got_it = len([s for s in history if s['signal_type'] == 'got_it'])
+    hist_sort_of = len([s for s in history if s['signal_type'] == 'sort_of'])
+    hist_lost = len([s for s in history if s['signal_type'] == 'lost'])
+
+    # --- Also get per-student LATEST signals (unique student count) ---
     signals_res = supabase.table("signals").select("signal_type").eq("session_code", session_code).execute()
     signals = signals_res.data
     got_it = len([s for s in signals if s['signal_type'] == 'got_it'])
@@ -200,19 +230,33 @@ async def end_session(session_code: str):
 
     return {
         "status": "session_ended",
+        # Per-student latest signal (for pie chart / current state)
         "got_it": got_it,
         "sort_of": sort_of,
         "lost": lost,
+        # Accumulated history (total signals across entire session)
+        "hist_got_it": hist_got_it,
+        "hist_sort_of": hist_sort_of,
+        "hist_lost": hist_lost,
+        "total_signals": hist_got_it + hist_sort_of + hist_lost,
         "total_students": attendance_res.count if attendance_res.count else (got_it + sort_of + lost),
         "total_questions": total_questions,
         "questions_addressed": addressed,
     }
-
 # --- Mark Question Addressed ---
 @router.post("/question/addressed")
 async def mark_question_addressed(req: QuestionAddressedReq):
     supabase.table("questions").update({"is_addressed": req.is_addressed}).eq("id", req.question_id).execute()
     return {"status": "success", "is_addressed": req.is_addressed}
+
+# --- Dismiss Question ---
+class QuestionDismissReq(BaseModel):
+    question_id: str
+
+@router.post("/question/dismiss")
+async def dismiss_question(req: QuestionDismissReq):
+    supabase.table("questions").update({"status": "spam"}).eq("id", req.question_id).execute()
+    return {"status": "success"}
 
 # --- Generate AI Answer (Preview only) ---
 @router.post("/doubt/generate")
@@ -259,4 +303,31 @@ async def check_session(session_code: str):
         "class_name": session.get("class_name", ""),
         "subject": session.get("subject", ""),
         "topic": session.get("topic", ""),
+        "subtopic": session.get("subtopic", ""),
+        "current_subtopic_index": session.get("current_subtopic_index", 0),
+    }
+
+# --- Advance Subtopic (teacher moves to next subtopic) ---
+@router.post("/session/advance-subtopic/{session_code}")
+async def advance_subtopic(session_code: str):
+    res = supabase.table("sessions").select("subtopic,current_subtopic_index").eq("session_code", session_code).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = res.data[0]
+    subtopic_str = session.get("subtopic", "") or ""
+    subtopics = [s.strip() for s in subtopic_str.split(",") if s.strip()] if subtopic_str else []
+    current_idx = session.get("current_subtopic_index", 0) or 0
+
+    if current_idx >= len(subtopics) - 1:
+        return {"status": "already_at_last", "current_subtopic_index": current_idx, "total": len(subtopics)}
+
+    new_idx = current_idx + 1
+    supabase.table("sessions").update({"current_subtopic_index": new_idx}).eq("session_code", session_code).execute()
+
+    return {
+        "status": "success",
+        "current_subtopic_index": new_idx,
+        "current_subtopic": subtopics[new_idx] if new_idx < len(subtopics) else "",
+        "total": len(subtopics),
     }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../data/mock_data.dart';
 import '../../services/api_service.dart';
+import '../../services/location_service.dart';
 import '../student_session_screen.dart';
 
 class StudentHomeTab extends StatefulWidget {
@@ -139,15 +140,31 @@ class _StudentHomeTabState extends State<StudentHomeTab> {
       child: GestureDetector(
         onTap: () async {
           HapticFeedback.mediumImpact();
+          final pos = await LocationService.getCurrentLocation();
           // Auto-join via API
           final result = await ApiService.joinSession(
             sessionCode: session.joinCode,
             rollNumber: ApiService.rollNumber ?? 'student_app',
+            latitude: pos?.latitude,
+            longitude: pos?.longitude,
           );
           if (!mounted) return;
           if (result != null && result['status'] == 'success') {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => StudentSessionScreen(session: session)),
+            );
+          } else {
+            final msg = (result != null && result['error'] != null)
+                ? result['error']
+                : 'Failed to join session.';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  msg,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+                backgroundColor: AppColors.warning,
+              ),
             );
           }
         },

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 import uuid
+import math
 from core.database import supabase
 from schemas.pydantic_models import JoinReq, SignalReq, DoubtReq, QuestionUpvoteReq
 from ai_engine.assistant import translate_indic_to_english, verify_and_classify_doubt
@@ -8,17 +9,40 @@ router = APIRouter()
 
 @router.post("/join")
 async def join_session(req: JoinReq):
-    res = supabase.table("sessions").select("id,subject,class_name,topic").eq("session_code", req.session_code).eq("is_active", True).execute()
+    res = supabase.table("sessions").select("id,subject,class_name,topic,subtopic,current_subtopic_index,latitude,longitude").eq("session_code", req.session_code).eq("is_active", True).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Invalid or inactive session code.")
 
     session = res.data[0]
+    
+    # Geofencing check (100 meter limit)
+    t_lat, t_lng = session.get("latitude"), session.get("longitude")
+    if t_lat is not None and t_lng is not None:
+        if req.latitude is None or req.longitude is None:
+            raise HTTPException(status_code=403, detail="Location permission is required to join this session.")
+            
+        # Haversine formula
+        R = 6371000 # Radius of Earth in meters
+        phi1 = math.radians(t_lat)
+        phi2 = math.radians(req.latitude)
+        delta_phi = math.radians(req.latitude - t_lat)
+        delta_lambda = math.radians(req.longitude - t_lng)
+        
+        a = math.sin(delta_phi/2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda/2.0)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        distance = R * c
+        
+        if distance > 100:
+            raise HTTPException(status_code=403, detail=f"You are too far from the classroom ({int(distance)}m). Maximum allowed is 100m.")
+
     student_uuid = str(uuid.uuid4())
 
     supabase.table("attendance").insert({
         "session_code": req.session_code,
         "student_uuid": student_uuid,
-        "roll_number": req.roll_number
+        "roll_number": req.roll_number,
+        "warnings": 0,
+        "is_blocked": False
     }).execute()
 
     return {
@@ -27,17 +51,31 @@ async def join_session(req: JoinReq):
         "subject": session.get("subject", ""),
         "class_name": session.get("class_name", ""),
         "topic": session.get("topic", ""),
+        "subtopic": session.get("subtopic", ""),
+        "current_subtopic_index": session.get("current_subtopic_index", 0),
     }
 
 @router.post("/signal")
 async def submit_signal(req: SignalReq):
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Upsert current signal (live dashboard shows latest per student)
     data = {
         "session_code": req.session_code,
         "student_uuid": req.student_uuid,
         "signal_type": req.signal,
-        "updated_at": "now()"
+        "updated_at": now_iso,
     }
     supabase.table("signals").upsert(data, on_conflict="session_code, student_uuid").execute()
+
+    # Also log to history table (accumulates all signals for summary/analytics)
+    supabase.table("signal_history").insert({
+        "session_code": req.session_code,
+        "student_uuid": req.student_uuid,
+        "signal_type": req.signal,
+    }).execute()
+
     return {"status": "success", "signal": req.signal}
 
 @router.post("/doubt")
@@ -53,6 +91,8 @@ async def submit_doubt(req: DoubtReq):
         "translated_text": english_text,
         "status": status,
     }
+    if req.subtopic:
+        db_payload["subtopic"] = req.subtopic
     if req.parent_id and req.parent_id not in ["null", "string"]:
         db_payload["parent_id"] = req.parent_id
 
@@ -61,11 +101,43 @@ async def submit_doubt(req: DoubtReq):
     return {"status": "success", "is_spam": status == "spam"}
 
 @router.get("/poll/status/{session_code}")
-async def check_poll_status(session_code: str):
-    res = supabase.table("sessions").select("is_active").eq("session_code", session_code).execute()
+async def check_poll_status(session_code: str, student_uuid: str = Query(None)):
+    res = supabase.table("sessions").select("is_active,subtopic,current_subtopic_index").eq("session_code", session_code).execute()
     if res.data and not res.data[0].get("is_active", True):
         return {"status": "closed"}
-    return {"status": "active"}
+        
+    if student_uuid:
+        att = supabase.table("attendance").select("is_blocked").eq("session_code", session_code).eq("student_uuid", student_uuid).execute()
+        if att.data and att.data[0].get("is_blocked"):
+            return {"status": "blocked"}
+            
+    session = res.data[0] if res.data else {}
+    return {
+        "status": "active",
+        "subtopic": session.get("subtopic", ""),
+        "current_subtopic_index": session.get("current_subtopic_index", 0),
+    }
+
+from schemas.pydantic_models import TabSwitchReq
+@router.post("/tab-switch")
+async def register_tab_switch(req: TabSwitchReq):
+    att = supabase.table("attendance").select("warnings, is_blocked").eq("session_code", req.session_code).eq("student_uuid", req.student_uuid).execute()
+    if not att.data:
+        return {"status": "error", "detail": "Student not found"}
+        
+    warnings = att.data[0].get("warnings", 0)
+    is_blocked = att.data[0].get("is_blocked", False)
+    
+    if not is_blocked:
+        warnings += 1
+        if warnings >= 2:
+            is_blocked = True
+        supabase.table("attendance").update({
+            "warnings": warnings,
+            "is_blocked": is_blocked
+        }).eq("session_code", req.session_code).eq("student_uuid", req.student_uuid).execute()
+        
+    return {"status": "success", "warnings": warnings, "is_blocked": is_blocked}
 
 @router.get("/questions/{session_code}")
 async def get_questions(session_code: str):

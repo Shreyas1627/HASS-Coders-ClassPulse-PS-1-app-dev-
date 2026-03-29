@@ -11,6 +11,8 @@ class LectureSlot {
   final String joinCode;
   final String? sessionId;
   final bool isActive;
+  final List<String> subtopics;
+  final int currentSubtopicIndex;
 
   const LectureSlot({
     required this.time,
@@ -21,9 +23,16 @@ class LectureSlot {
     this.joinCode = '0000',
     this.sessionId,
     this.isActive = true,
+    this.subtopics = const [],
+    this.currentSubtopicIndex = 0,
   });
 
   factory LectureSlot.fromJson(Map<String, dynamic> json) {
+    final subtopicRaw = json['subtopic'] as String? ?? '';
+    final parsedSubtopics = subtopicRaw.isNotEmpty
+        ? subtopicRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+        : <String>[];
+
     return LectureSlot(
       time: json['created_at'] != null
           ? _formatTime(json['created_at'] as String)
@@ -35,6 +44,8 @@ class LectureSlot {
       joinCode: json['session_code'] ?? '0000',
       sessionId: json['id'],
       isActive: json['is_active'] == true,
+      subtopics: parsedSubtopics,
+      currentSubtopicIndex: json['current_subtopic_index'] as int? ?? 0,
     );
   }
 
@@ -149,6 +160,8 @@ class StudentQuestion {
   final int upvotes;
   final bool isAddressed;
   final String? questionId;
+  final String? studentUuid;
+  final String? subtopic;
 
   const StudentQuestion({
     required this.text,
@@ -156,6 +169,8 @@ class StudentQuestion {
     this.upvotes = 1,
     this.isAddressed = false,
     this.questionId,
+    this.studentUuid,
+    this.subtopic,
   });
 }
 

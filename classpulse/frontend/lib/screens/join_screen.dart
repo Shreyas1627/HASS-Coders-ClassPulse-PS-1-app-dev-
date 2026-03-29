@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
 import '../widgets/pin_display.dart';
 import '../widgets/numpad.dart';
 import '../widgets/scanner_overlay.dart';
@@ -69,14 +70,22 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
   void _onJoinPressed() async {
     if (_pin.length == 4) {
       HapticFeedback.mediumImpact();
+      final pos = await LocationService.getCurrentLocation();
       final result = await ApiService.joinSession(
         sessionCode: _pin,
         rollNumber: 'student_app',
+        latitude: pos?.latitude,
+        longitude: pos?.longitude,
       );
 
       if (!mounted) return;
 
       if (result != null && result['status'] == 'success') {
+        final subtopicRaw = result['subtopic'] as String? ?? '';
+        final parsedSubtopics = subtopicRaw.isNotEmpty
+            ? subtopicRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+            : <String>[];
+
         final session = LectureSlot(
           time: 'Live',
           className: result['class_name'] ?? 'Class',
@@ -84,6 +93,8 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
           topic: result['topic'] ?? 'Topic',
           isCurrentOrPast: true,
           joinCode: _pin,
+          subtopics: parsedSubtopics,
+          currentSubtopicIndex: result['current_subtopic_index'] as int? ?? 0,
         );
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -91,11 +102,14 @@ class _JoinScreenState extends State<JoinScreen> with TickerProviderStateMixin {
           ),
         );
       } else {
+        final msg = (result != null && result['error'] != null)
+            ? result['error']
+            : 'Invalid code. No active session found.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
-              'Invalid code. No active session found.',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+            content: Text(
+              msg,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
             ),
             backgroundColor: AppColors.warning,
             behavior: SnackBarBehavior.floating,

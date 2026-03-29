@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import '../data/mock_data.dart';
 import '../services/api_service.dart';
+import '../services/location_service.dart';
 import 'tabs/student_home_tab.dart';
 import 'tabs/student_sessions_tab.dart';
 import 'student_session_screen.dart';
@@ -199,14 +200,22 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   void _joinWithCode(String code) async {
+    final pos = await LocationService.getCurrentLocation();
     final result = await ApiService.joinSession(
       sessionCode: code,
       rollNumber: ApiService.teacherId ?? 'student_app',
+      latitude: pos?.latitude,
+      longitude: pos?.longitude,
     );
 
     if (!mounted) return;
 
     if (result != null && result['status'] == 'success') {
+      final subtopicRaw = result['subtopic'] as String? ?? '';
+      final parsedSubtopics = subtopicRaw.isNotEmpty
+          ? subtopicRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+          : <String>[];
+
       final session = LectureSlot(
         time: 'Live',
         className: result['class_name'] ?? 'Class',
@@ -214,6 +223,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         topic: result['topic'] ?? 'Topic',
         isCurrentOrPast: true,
         joinCode: code,
+        subtopics: parsedSubtopics,
+        currentSubtopicIndex: result['current_subtopic_index'] as int? ?? 0,
       );
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -221,11 +232,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ),
       );
     } else {
+      final msg = (result != null && result['error'] != null) 
+          ? result['error'] 
+          : 'Invalid code. No active session found.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text(
-            'Invalid code. No active session found.',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          content: Text(
+            msg,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
           ),
           backgroundColor: AppColors.warning,
           behavior: SnackBarBehavior.floating,

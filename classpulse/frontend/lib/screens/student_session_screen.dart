@@ -14,9 +14,10 @@ class StudentSessionScreen extends StatefulWidget {
   State<StudentSessionScreen> createState() => _StudentSessionScreenState();
 }
 
-class _StudentSessionScreenState extends State<StudentSessionScreen> {
+class _StudentSessionScreenState extends State<StudentSessionScreen> with WidgetsBindingObserver {
   String? _selectedSignal; // 'understood', 'maybe', 'not_understood'
   bool _signalSent = false;
+  bool _isBlocked = false;
   final _doubtController = TextEditingController();
 
   // ── Cooldown state ──────────────────────────────────────────────────
@@ -31,17 +32,77 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
   List<Map<String, dynamic>> _questions = [];
   Timer? _questionPollTimer;
 
+  // Subtopic tracking (synced from API)
+  int _currentSubtopicIndex = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadQuestions();
     _questionPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _loadQuestions();
     });
   }
 
+  bool _wasInBackground = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || 
+        state == AppLifecycleState.inactive || 
+        state == AppLifecycleState.hidden) {
+      _wasInBackground = true;
+    } else if (state == AppLifecycleState.resumed) {
+      if (_wasInBackground && !_isBlocked && mounted) {
+        _wasInBackground = false;
+        _logTabSwitch();
+      }
+    }
+  }
+
+  Future<void> _logTabSwitch() async {
+    final res = await ApiService.registerTabSwitch();
+    if (res != null && mounted) {
+      if (res['is_blocked'] == true) {
+        setState(() => _isBlocked = true);
+      } else if (res['warnings'] == 1) {
+        // First violation
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '⚠️ Warning: Please stay in the app during the session. Another violation will lock your screen.',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _loadQuestions() async {
     final code = ApiService.sessionCode ?? widget.session.joinCode;
+    
+    // Check block status
+    final statusData = await ApiService.pollSessionStatus(code);
+    if (statusData != null && mounted) {
+      if (statusData['status'] == 'blocked') {
+        setState(() => _isBlocked = true);
+        return;
+      } else if (statusData['status'] == 'closed') {
+        _handleSessionClosed();
+        return;
+      }
+      
+      // Sync subtopic index from API
+      setState(() {
+        _currentSubtopicIndex = statusData['current_subtopic_index'] as int? ?? _currentSubtopicIndex;
+      });
+    }
+
     final data = await ApiService.pollDashboard(code);
     if (data != null && mounted) {
       final apiQuestions = data['questions'] as List<dynamic>? ?? [];
@@ -70,8 +131,34 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
             'ai_response': aiResponse,
           };
         }).toList();
+
+        // Sync subtopic index from API
+        _currentSubtopicIndex = data['current_subtopic_index'] as int? ?? _currentSubtopicIndex;
       });
     }
+  }
+
+  void _handleSessionClosed() {
+    if (!mounted) return;
+    _questionPollTimer?.cancel();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Session Ended', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text('The teacher has ended this session.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop(); // dialog
+              Navigator.of(context).pop(); // screen
+            },
+            child: const Text('Leave', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
   }
 
   void _showNewAnswerNotification(String question) {
@@ -116,6 +203,7 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cooldownTimer?.cancel();
     _questionPollTimer?.cancel();
     _doubtController.dispose();
@@ -226,10 +314,16 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
             // Submit doubt text if present
             final doubtText = _doubtController.text.trim();
             if (doubtText.isNotEmpty && uuid != null) {
+              final subs = widget.session.subtopics;
+              final String? activeSubtopic = subs.isNotEmpty && _currentSubtopicIndex < subs.length
+                  ? subs[_currentSubtopicIndex]
+                  : null;
+
               ApiService.submitDoubt(
                 sessionCode: code,
                 studentUuid: uuid,
                 text: doubtText,
+                subtopic: activeSubtopic,
               );
             }
 
@@ -277,6 +371,51 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isBlocked) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 80),
+                const SizedBox(height: 24),
+                const Text(
+                  'SESSION LOCKED',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'You have been blocked from this session for leaving the app too many times. Please consult your teacher to regain access.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 16, height: 1.5),
+                ),
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Pop back to dashboard
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.surface,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Return to Dashboard', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -417,6 +556,37 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
   // ── Topic Tracker (Done → Active → Next) ──────────────────────────────
 
   Widget _buildTopicTracker() {
+    final subs = widget.session.subtopics;
+
+    // If no subtopics, show fallback
+    if (subs.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.divider, width: 1),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _buildTopicBlock(label: 'Done', topic: '—', color: AppColors.success, icon: Icons.check_circle_rounded)),
+              const SizedBox(width: 8),
+              Expanded(child: _buildTopicBlock(label: 'Active', topic: widget.session.topic.isEmpty ? 'Main Topic' : widget.session.topic, color: AppColors.primary, icon: Icons.play_circle_rounded)),
+              const SizedBox(width: 8),
+              Expanded(child: _buildTopicBlock(label: 'Next', topic: '—', color: AppColors.textSecondary, icon: Icons.fast_forward_rounded)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final idx = _currentSubtopicIndex;
+    final doneTopic = idx > 0 ? subs[idx - 1] : '—';
+    final activeTopic = idx < subs.length ? subs[idx] : subs.last;
+    final nextTopic = idx < subs.length - 1 ? subs[idx + 1] : '—';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Container(
@@ -426,43 +596,74 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.divider, width: 1),
         ),
-        child: Row(
+        child: Column(
           children: [
-            Expanded(
-              child: _buildTopicBlock(
-                label: 'Done',
-                topic: 'Introduction',
-                color: AppColors.success,
-                icon: Icons.check_circle_rounded,
-              ),
+            // Progress dots
+            Row(
+              children: [
+                for (int i = 0; i < subs.length; i++) ...[
+                  if (i > 0) Expanded(
+                    child: Container(
+                      height: 2,
+                      color: i <= idx ? AppColors.success : AppColors.divider,
+                    ),
+                  ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i < idx
+                          ? AppColors.success
+                          : i == idx
+                              ? AppColors.primary
+                              : AppColors.divider,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            Container(
-              width: 1,
-              height: 40,
-              color: AppColors.divider,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            Expanded(
-              child: _buildTopicBlock(
-                label: 'Active',
-                topic: widget.session.topic,
-                color: AppColors.primary,
-                icon: Icons.play_circle_rounded,
-              ),
-            ),
-            Container(
-              width: 1,
-              height: 40,
-              color: AppColors.divider,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            Expanded(
-              child: _buildTopicBlock(
-                label: 'Next',
-                topic: 'Practice Problems',
-                color: AppColors.textMuted,
-                icon: Icons.skip_next_rounded,
-              ),
+            const SizedBox(height: 10),
+            // Done → Active → Next
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTopicBlock(
+                    label: 'Done',
+                    topic: doneTopic,
+                    color: AppColors.success,
+                    icon: Icons.check_circle_rounded,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: AppColors.divider,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                Expanded(
+                  child: _buildTopicBlock(
+                    label: 'Active',
+                    topic: activeTopic,
+                    color: AppColors.primary,
+                    icon: Icons.play_circle_rounded,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: AppColors.divider,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                Expanded(
+                  child: _buildTopicBlock(
+                    label: 'Next',
+                    topic: nextTopic,
+                    color: AppColors.textMuted,
+                    icon: Icons.skip_next_rounded,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

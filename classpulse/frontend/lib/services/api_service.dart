@@ -35,6 +35,8 @@ class ApiService {
     required String subject,
     required String topic,
     String? subtopic,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final res = await http.post(
@@ -46,6 +48,8 @@ class ApiService {
           'subject': subject,
           'topic': topic,
           'subtopic': subtopic,
+          'latitude': latitude,
+          'longitude': longitude,
         }),
       ).timeout(const Duration(seconds: 5));
       if (res.statusCode == 200) return jsonDecode(res.body);
@@ -151,6 +155,19 @@ class ApiService {
     return false;
   }
 
+  /// Permanently dismiss a question
+  static Future<bool> dismissQuestion(String questionId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/teacher/question/dismiss'),
+        headers: _headers,
+        body: jsonEncode({'question_id': questionId}),
+      ).timeout(const Duration(seconds: 3));
+      return res.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
+
   /// Check session code validity
   static Future<Map<String, dynamic>?> checkSession(String sessionCode) async {
     try {
@@ -169,12 +186,19 @@ class ApiService {
   static Future<Map<String, dynamic>?> joinSession({
     required String sessionCode,
     required String rollNumber,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final res = await http.post(
         Uri.parse('$_baseUrl/api/student/join'),
         headers: _headers,
-        body: jsonEncode({'session_code': sessionCode, 'roll_number': rollNumber}),
+        body: jsonEncode({
+          'session_code': sessionCode,
+          'roll_number': rollNumber,
+          'latitude': latitude,
+          'longitude': longitude,
+        }),
       ).timeout(const Duration(seconds: 5));
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
@@ -182,6 +206,8 @@ class ApiService {
         _sessionCode = sessionCode;
         _rollNumber = rollNumber;
         return data;
+      } else {
+        return {'error': jsonDecode(res.body)['detail'] ?? 'Join failed'};
       }
     } catch (_) {}
     return null;
@@ -214,6 +240,7 @@ class ApiService {
     required String studentUuid,
     required String text,
     String? parentId,
+    String? subtopic,
   }) async {
     try {
       final body = {
@@ -222,6 +249,7 @@ class ApiService {
         'text': text,
       };
       if (parentId != null) body['parent_id'] = parentId;
+      if (subtopic != null) body['subtopic'] = subtopic;
       final res = await http.post(
         Uri.parse('$_baseUrl/api/student/doubt'),
         headers: _headers,
@@ -260,19 +288,58 @@ class ApiService {
     return false;
   }
 
-  /// Check if session is still active
-  static Future<bool> isSessionActive(String sessionCode) async {
+  /// Get session status (poll)
+  static Future<Map<String, dynamic>?> pollSessionStatus(String sessionCode) async {
     try {
+      String url = '$_baseUrl/api/student/poll/status/$sessionCode';
+      if (_studentUuid != null) {
+        url += '?student_uuid=$_studentUuid';
+      }
       final res = await http.get(
-        Uri.parse('$_baseUrl/api/student/poll/status/$sessionCode'),
+        Uri.parse(url),
         headers: _headers,
       ).timeout(const Duration(seconds: 3));
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        return data['status'] != 'closed';
+        return jsonDecode(res.body);
       }
     } catch (_) {}
-    return true;
+    return null;
+  }
+
+  /// Register app background (tab switch)
+  static Future<Map<String, dynamic>?> registerTabSwitch() async {
+    if (_sessionCode == null || _studentUuid == null) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/student/tab-switch'),
+        headers: _headers,
+        body: jsonEncode({
+          'session_code': _sessionCode,
+          'student_uuid': _studentUuid,
+        }),
+      ).timeout(const Duration(seconds: 3));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Unblock student (teacher)
+  static Future<bool> unblockStudent({
+    required String sessionCode,
+    required String studentUuid,
+  }) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/teacher/student/unblock'),
+        headers: _headers,
+        body: jsonEncode({
+          'session_code': sessionCode,
+          'student_uuid': studentUuid,
+        }),
+      ).timeout(const Duration(seconds: 3));
+      return res.statusCode == 200;
+    } catch (_) {}
+    return false;
   }
 
   /// Get student's past session history
@@ -322,6 +389,18 @@ class ApiService {
         headers: _headers,
         body: jsonEncode({'question_id': questionId}),
       ).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (_) {}
+    return null;
+  }
+
+  /// Advance to next subtopic in session
+  static Future<Map<String, dynamic>?> advanceSubtopic(String sessionCode) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_baseUrl/api/teacher/session/advance-subtopic/$sessionCode'),
+        headers: _headers,
+      ).timeout(const Duration(seconds: 3));
       if (res.statusCode == 200) return jsonDecode(res.body);
     } catch (_) {}
     return null;
